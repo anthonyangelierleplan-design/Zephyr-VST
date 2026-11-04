@@ -7,14 +7,16 @@ juce::StringArray ZephyrProcessor::choiceNames (int i)
 {
     switch (i)
     {
-        case p_mode:  return { "PIPE", "FILTER" };
+        case p_mode:  return { "PIPE", "FILTER", "BOW", "REED", "STRING", "PLATE", "ROOM", "CHOIR", "LADDER", "MULTIMODE" };
         case p_lock:  return { "HARMONIC", "SCALE" };
         case p_scale: return { "Major", "Minor", "Dorian", "Pentatonic Minor", "Pentatonic Major", "Whole Tone", "Chromatic" };
         case p_root:  return { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
         case p_fmType:  return { "Bell", "Metal", "Wood", "Spring", "Laser", "Glass" };
         case p_dlMode:  return { "NORMAL", "SPRING", "PSYCHO" };
         case p_dlRoute: return { "REVERB > DELAY", "DELAY > REVERB", "PARALLEL" };
-        default:      return { "FEEDBACK", "WIND", "FOCUS", "BRIGHT", "DRIVE", "BREATH", "PITCH", "FM LEVEL" };   // cibles de la pression
+        case p_m1s: case p_m2s: case p_m3s: case p_m4s: case p_m5s: case p_m6s:
+            return { "NONE", "POLY AFTERTOUCH", "CHANNEL AFTERTOUCH", "MOD WHEEL", "EXPRESSION", "VELOCITY", "MACRO 1", "MACRO 2", "MACRO 3", "MACRO 4", "MACRO 5", "MACRO 6", "MACRO 7", "MACRO 8", "LEARN A", "LEARN B" };
+        default:      return { "FEEDBACK", "WIND", "FOCUS", "BRIGHT", "DRIVE", "BREATH", "PITCH", "FM LEVEL", "FM CHARACTER", "DELAY MIX", "DELAY FEEDBACK", "REVERB MIX" };   // cibles de la pression
     }
 }
 
@@ -25,7 +27,7 @@ juce::String valueText (int i, float v)
     switch (i)
     {
         case p_out:      return (v > 0.05f ? "+" : "") + juce::String (v, 1) + " dB";
-        case p_glide: case p_atk: case p_rel:
+        case p_glide: case p_atk: case p_rel: case p_dec:
             return v >= 1000.f ? juce::String (v / 1000.f, 2) + " s" : juce::String ((int) std::round (v)) + " ms";
         case p_fmDecay:  return juce::String (v, 2) + " s";
         case p_dlRate:   return juce::String (v, 2) + " Hz";
@@ -33,7 +35,7 @@ juce::String valueText (int i, float v)
         case p_detune:   return juce::String (v, 1) + " cents";
         case p_bend:     return juce::String ((int) std::round (v)) + " semitones";
         case p_pcurve:   return v < 0.95f ? "soft" : (v > 1.05f ? "hard" : "linear");
-        case p_p1a: case p_p2a: case p_p3a:
+        case p_m1a: case p_m2a: case p_m3a: case p_m4a: case p_m5a: case p_m6a:
         { const int pc = (int) std::round (v * 100.f); return (pc > 0 ? "+" : "") + juce::String (pc) + " %"; }
         default:         return juce::String ((int) std::round (v * 100.f)) + " %";
     }
@@ -86,6 +88,11 @@ void ZephyrProcessor::prepareToPlay (double sr, int block)
 void ZephyrProcessor::handle (const juce::MidiMessage& m)
 {
     const int ch = m.getChannel() - 1;
+    if (m.isController() && learnArm.load() > 0)                               // apprentissage : le prochain CC recu est assigne (hors selection de banque, sustain, all-notes-off)
+    {
+        const int cc = m.getControllerNumber();
+        if (cc != 0 && cc != 32 && cc != 64 && cc < 120) { learnCC[learnArm.load() - 1].store (cc); learnArm.store (0); }
+    }
     if (m.isNoteOn())                  synth.noteOn (ch, m.getNoteNumber(), m.getFloatVelocity());
     else if (m.isNoteOff())            synth.noteOff (ch, m.getNoteNumber());
     else if (m.isAftertouch())         synth.polyPressure (ch, m.getNoteNumber(), (float) m.getAfterTouchValue() / 127.f);
@@ -102,6 +109,7 @@ void ZephyrProcessor::processBlock (juce::AudioBuffer<float>& buf, juce::MidiBuf
     const float *eL = nullptr, *eR = nullptr;
     for (int i = 0; i < kNumP; ++i) values[i] = raw[i]->load();
     synth.setParams (values);
+    synth.setLearn (learnCC[0].load(), learnCC[1].load());
 
     auto out = getBusBuffer (buf, false, 0);
     out.clear();
@@ -129,12 +137,15 @@ juce::ValueTree ZephyrProcessor::captureState()
 {
     auto s = apvts.copyState();
     s.setProperty ("presetName", presetName, nullptr);
+    s.setProperty ("learnA", learnCC[0].load(), nullptr);
+    s.setProperty ("learnB", learnCC[1].load(), nullptr);
     return s;
 }
 
 void ZephyrProcessor::applyState (const juce::ValueTree& s)
 {
     presetName = s.getProperty ("presetName", "Init").toString();
+    learnCC[0].store ((int) s.getProperty ("learnA", -1)); learnCC[1].store ((int) s.getProperty ("learnB", -1));
     apvts.replaceState (s);
 }
 
@@ -160,25 +171,25 @@ const std::vector<Factory>& factory()
         { "Init", {} },
         { "Breath of Glass", {
             { p_fb, .32f }, { p_wind, .15f }, { p_range, .5f }, { p_focus, .6f }, { p_bright, .35f }, { p_drive, .15f }, { p_breath, .6f },
-            { p_p1a, .7f }, { p_p2a, .55f }, { p_rvSize, .8f }, { p_rvMix, .45f }, { p_atk, 1400.f }, { p_rel, 4500.f } } },
+            { p_m1a, .7f }, { p_m2a, .55f }, { p_rvSize, .8f }, { p_rvMix, .45f }, { p_atk, 1400.f }, { p_rel, 4500.f } } },
         { "Whirly Pipe", {
             { p_fb, .4f }, { p_range, .85f }, { p_focus, .55f }, { p_stick, .6f }, { p_snap, 1.f }, { p_glide, 70.f }, { p_breath, .5f },
-            { p_p1t, 0 }, { p_p1a, .5f }, { p_p2t, 1 }, { p_p2a, 1.f }, { p_rvSize, .5f }, { p_rvMix, .25f }, { p_atk, 300.f }, { p_rel, 900.f } } },
+            { p_m1d, 0 }, { p_m1a, .5f }, { p_m2d, 1 }, { p_m2a, 1.f }, { p_rvSize, .5f }, { p_rvMix, .25f }, { p_atk, 300.f }, { p_rel, 900.f } } },
         { "Pentatonic Larsen", {
             { p_lock, 1 }, { p_scale, 3 }, { p_fb, .38f }, { p_range, .6f }, { p_focus, .7f }, { p_snap, .8f }, { p_glide, 220.f }, { p_drive, .4f },
-            { p_p1a, .6f }, { p_p2t, 1 }, { p_p2a, .9f }, { p_rvSize, .7f }, { p_rvMix, .4f } } },
+            { p_m1a, .6f }, { p_m2d, 1 }, { p_m2a, .9f }, { p_rvSize, .7f }, { p_rvMix, .4f } } },
         { "Filter Choir", {
             { p_mode, 1 }, { p_lock, 1 }, { p_scale, 2 }, { p_fb, .4f }, { p_range, .4f }, { p_focus, .85f }, { p_bright, .25f }, { p_snap, .6f }, { p_glide, 350.f },
-            { p_p1a, .7f }, { p_p2a, .8f }, { p_detune, 14.f }, { p_spread, .9f }, { p_rvSize, .8f }, { p_rvMix, .4f }, { p_atk, 900.f }, { p_rel, 3500.f } } },
+            { p_m1a, .7f }, { p_m2a, .8f }, { p_detune, 14.f }, { p_spread, .9f }, { p_rvSize, .8f }, { p_rvMix, .4f }, { p_atk, 900.f }, { p_rel, 3500.f } } },
         { "Cathedral Feedback", {
             { p_fb, .5f }, { p_wind, .2f }, { p_range, .7f }, { p_drive, .7f }, { p_breath, .6f }, { p_bright, .55f }, { p_focus, .4f },
-            { p_p1a, .5f }, { p_p2a, .7f }, { p_p3t, 4 }, { p_p3a, .4f }, { p_rvSize, .95f }, { p_rvMix, .55f }, { p_atk, 2200.f }, { p_rel, 6500.f } } },
+            { p_m1a, .5f }, { p_m2a, .7f }, { p_m3s, 1 }, { p_m3d, 4 }, { p_m3a, .4f }, { p_rvSize, .95f }, { p_rvMix, .55f }, { p_atk, 2200.f }, { p_rel, 6500.f } } },
         { "Drone Bloom", {
             { p_hold, 1 }, { p_fb, .58f }, { p_wind, .3f }, { p_range, .6f }, { p_stick, .7f }, { p_snap, .9f }, { p_glide, 400.f }, { p_drive, .35f },
-            { p_p1a, .3f }, { p_p2a, .7f }, { p_atk, 3000.f }, { p_rel, 7000.f }, { p_rvSize, .9f }, { p_rvMix, .5f } } },
+            { p_m1a, .3f }, { p_m2a, .7f }, { p_atk, 3000.f }, { p_rel, 7000.f }, { p_rvSize, .9f }, { p_rvMix, .5f } } },
         { "Glass Bell Choir", {
             { p_fm, .6f }, { p_fmType, 0 }, { p_fmChar, .45f }, { p_fmRoute, .35f }, { p_fmDecay, 1.6f }, { p_fb, .36f }, { p_focus, .7f }, { p_breath, .25f },
-            { p_p1a, .55f }, { p_p2a, .6f }, { p_rvSize, .85f }, { p_rvMix, .45f }, { p_atk, 120.f }, { p_rel, 3000.f } } },
+            { p_m1a, .55f }, { p_m2a, .6f }, { p_rvSize, .85f }, { p_rvMix, .45f }, { p_atk, 120.f }, { p_rel, 3000.f } } },
         { "Spring Boing", {
             { p_fm, .7f }, { p_fmType, 3 }, { p_fmChar, .6f }, { p_fmRoute, .5f }, { p_fmDecay, .5f }, { p_fb, .3f }, { p_breath, .2f },
             { p_dlMode, 1 }, { p_dlTime, .35f }, { p_dlFb, .75f }, { p_dlMod, .55f }, { p_dlRate, 5.f }, { p_dlTone, .6f }, { p_dlMix, .5f },
@@ -190,14 +201,53 @@ const std::vector<Factory>& factory()
         { "Psycho Drone", {
             { p_hold, 1 }, { p_fm, .5f }, { p_fmType, 5 }, { p_fmChar, .5f }, { p_fmRoute, .4f }, { p_fmDecay, 8.f }, { p_fb, .4f }, { p_wind, .2f }, { p_stick, .7f },
             { p_dlMode, 2 }, { p_dlTime, .55f }, { p_dlFb, .7f }, { p_dlMod, .6f }, { p_dlRate, .35f }, { p_dlTone, .4f }, { p_dlMix, .5f }, { p_dlLoop, .25f }, { p_dlRoute, 0 },
-            { p_p1a, .4f }, { p_p2a, .6f }, { p_rvSize, .9f }, { p_rvMix, .4f }, { p_atk, 2500.f }, { p_rel, 6000.f } } },
+            { p_m1a, .4f }, { p_m2a, .6f }, { p_rvSize, .9f }, { p_rvMix, .4f }, { p_atk, 2500.f }, { p_rel, 6000.f } } },
         { "Wooden Pipe", {
             { p_fm, .75f }, { p_fmType, 2 }, { p_fmChar, .5f }, { p_fmRoute, .15f }, { p_fmDecay, .6f }, { p_fb, .42f }, { p_focus, .75f }, { p_breath, .1f }, { p_bright, .3f },
-            { p_p1a, .5f }, { p_p2a, .8f }, { p_rvSize, .5f }, { p_rvMix, .25f }, { p_atk, 15.f }, { p_rel, 700.f } } },
+            { p_m1a, .5f }, { p_m2a, .8f }, { p_rvSize, .5f }, { p_rvMix, .25f }, { p_atk, 15.f }, { p_rel, 700.f } } },
         { "Metal Resonance", {
             { p_fm, .6f }, { p_fmType, 1 }, { p_fmChar, .55f }, { p_fmRoute, .25f }, { p_fmDecay, 2.5f }, { p_fb, .4f }, { p_focus, .8f }, { p_drive, .45f },
             { p_dlMode, 0 }, { p_dlTime, .3f }, { p_dlFb, .45f }, { p_dlMix, .3f }, { p_dlLoop, .15f }, { p_dlRoute, 1 },
-            { p_p1a, .55f }, { p_p2a, .6f }, { p_rvSize, .8f }, { p_rvMix, .4f }, { p_atk, 40.f }, { p_rel, 2000.f } } },
+            { p_m1a, .55f }, { p_m2a, .6f }, { p_rvSize, .8f }, { p_rvMix, .4f }, { p_atk, 40.f }, { p_rel, 2000.f } } },
+        { "Slow Bow", {
+            { p_mode, 2 }, { p_fb, .45f }, { p_wind, .25f }, { p_focus, .5f }, { p_bright, .5f }, { p_breath, .45f }, { p_drive, .2f },
+            { p_m1a, .45f }, { p_m2a, .5f }, { p_rvSize, .8f }, { p_rvMix, .4f }, { p_atk, 900.f }, { p_rel, 2500.f } } },
+        { "Reed Choir", {
+            { p_mode, 3 }, { p_fb, .3f }, { p_wind, .2f }, { p_bright, .55f }, { p_breath, .35f }, { p_detune, 9.f }, { p_spread, .8f },
+            { p_m1a, .5f }, { p_m2a, .3f }, { p_rvSize, .8f }, { p_rvMix, .4f }, { p_atk, 160.f }, { p_rel, 1500.f } } },
+        { "Plucked Glass", {
+            { p_mode, 4 }, { p_fb, .35f }, { p_focus, .55f }, { p_bright, .6f }, { p_drive, .15f }, { p_breath, .2f },
+            { p_m1a, .5f }, { p_m2a, .3f }, { p_rvSize, .7f }, { p_rvMix, .35f }, { p_rel, 900.f } } },
+        { "Singing Bowl", {
+            { p_mode, 5 }, { p_fb, .55f }, { p_wind, .95f }, { p_bright, .45f }, { p_breath, .45f },
+            { p_m1a, .5f }, { p_m2a, .0f }, { p_rvSize, .85f }, { p_rvMix, .45f }, { p_rel, 4000.f } } },
+        { "Room Howl", {
+            { p_mode, 6 }, { p_fb, .4f }, { p_wind, .15f }, { p_drive, .6f }, { p_bright, .5f }, { p_breath, .3f },
+            { p_m1a, .5f }, { p_m2a, .5f }, { p_rvSize, .6f }, { p_rvMix, .3f }, { p_atk, 700.f }, { p_rel, 2500.f } } },
+        { "Vowel Choir", {
+            { p_mode, 7 }, { p_fb, .45f }, { p_wind, .0f }, { p_focus, .5f }, { p_detune, 11.f }, { p_spread, .9f },
+            { p_m1a, .4f }, { p_m2s, 1 }, { p_m2d, 1 }, { p_m2a, .9f }, { p_rvSize, .8f }, { p_rvMix, .4f }, { p_atk, 400.f }, { p_rel, 2500.f } } },
+        { "Hydrasynth Playground", {
+            { p_fm, .35f }, { p_fmType, 0 }, { p_fmChar, .4f }, { p_fmRoute, .5f }, { p_fmDecay, 1.2f }, { p_fb, .34f }, { p_breath, .3f },
+            { p_dlMode, 0 }, { p_dlTime, .5f }, { p_dlFb, .5f }, { p_dlMix, 0.f }, { p_rvSize, .8f }, { p_rvMix, .25f }, { p_atk, 80.f }, { p_rel, 2500.f },
+            { p_m1s, 1 }, { p_m1d, 0 }, { p_m1a, .5f },        // aftertouch poly -> feedback
+            { p_m2s, 1 }, { p_m2d, 1 }, { p_m2a, .6f },        // aftertouch poly -> wind
+            { p_m3s, 3 }, { p_m3d, 9 }, { p_m3a, .8f },        // molette -> delay
+            { p_m4s, 6 }, { p_m4d, 11 }, { p_m4a, .6f },       // macro 1 -> reverb
+            { p_m5s, 7 }, { p_m5d, 8 }, { p_m5a, .8f },        // macro 2 -> caractere du FM
+            { p_m6s, 5 }, { p_m6d, 7 }, { p_m6a, .5f } } },    // velocite -> niveau FM
+        { "Short Pluck", {
+            { p_mode, 4 }, { p_fb, .4f }, { p_breath, 0.f }, { p_focus, .6f }, { p_atk, 5.f }, { p_dec, 250.f }, { p_sus, 0.f }, { p_rel, 300.f },
+            { p_fm, .3f }, { p_fmType, 2 }, { p_fmDecay, .2f }, { p_m1a, .3f }, { p_m2a, .0f }, { p_rvSize, .5f }, { p_rvMix, .25f } } },
+        { "Pipe Pluck", {
+            { p_mode, 0 }, { p_fb, .6f }, { p_breath, .1f }, { p_atk, 5.f }, { p_dec, 220.f }, { p_sus, .1f }, { p_rel, 400.f },
+            { p_fm, .4f }, { p_fmType, 1 }, { p_fmDecay, .3f }, { p_m1a, .3f }, { p_m2a, .0f }, { p_rvSize, .6f }, { p_rvMix, .3f } } },
+        { "Ladder Scream", {
+            { p_mode, 8 }, { p_fb, .55f }, { p_focus, .75f }, { p_drive, .6f }, { p_atk, 30.f }, { p_dec, 900.f }, { p_sus, .6f }, { p_rel, 1200.f },
+            { p_m1a, .5f }, { p_m2a, .6f }, { p_rvSize, .7f }, { p_rvMix, .35f } } },
+        { "Multimode Whistle", {
+            { p_mode, 9 }, { p_fb, .5f }, { p_focus, .8f }, { p_bright, .7f }, { p_breath, .35f }, { p_atk, 80.f }, { p_rel, 1500.f },
+            { p_m1a, .5f }, { p_m2a, .6f }, { p_m3s, 3 }, { p_m3d, 3 }, { p_m3a, .8f }, { p_rvSize, .7f }, { p_rvMix, .35f } } },
     };
     return f;
 }

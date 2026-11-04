@@ -42,6 +42,7 @@ public:
     juce::AudioProcessorValueTreeState apvts;
     eo::Zephyr synth;
     juce::String presetName { "Init" };
+    std::atomic<int> learnArm { 0 }, learnCC[2] { { -1 }, { -1 } };       // apprentissage MIDI : 0 = rien, 1 = A, 2 = B
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();

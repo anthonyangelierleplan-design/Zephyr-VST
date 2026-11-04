@@ -13,7 +13,7 @@ namespace eo
 //  id        nom                       min    max    def    type(0 float,1 bool,2 choix)  centre
 #define EO_PARAMS(X) \
     X (out,     "Output",             -24.f,   6.f,  -8.f,  0, 0.f)    \
-    X (mode,    "Resonator",            0.f,   1.f,   0.f,  2, 0.f)    \
+    X (mode,    "Resonator",            0.f,   9.f,   0.f,  2, 0.f)    \
     X (lock,    "Lock",                 0.f,   1.f,   0.f,  2, 0.f)    \
     X (scale,   "Scale",                0.f,   6.f,   0.f,  2, 0.f)    \
     X (root,    "Root",                 0.f,  11.f,   0.f,  2, 0.f)    \
@@ -29,6 +29,8 @@ namespace eo
     X (breath,  "Breath",               0.f,   1.f,   0.4f, 0, 0.f)    \
     X (atk,     "Attack",               5.f, 4000.f, 600.f, 0, 300.f)  \
     X (rel,     "Release",             50.f, 8000.f, 1800.f,0, 800.f)  \
+    X (dec,     "Decay",               20.f, 8000.f, 800.f, 0, 600.f)  \
+    X (sus,     "Sustain",              0.f,   1.f,   1.f,  0, 0.f)    \
     X (detune,  "Detune",               0.f,  30.f,   6.f,  0, 0.f)    \
     X (spread,  "Spread",               0.f,   1.f,   0.6f, 0, 0.f)    \
     X (fm,      "FM Level",             0.f,   1.f,   0.f,  0, 0.f)    \
@@ -48,12 +50,24 @@ namespace eo
     X (dlMix,   "Delay Mix",            0.f,   1.f,   0.f,  0, 0.f)    \
     X (dlLoop,  "Delay To Loop",        0.f,   1.f,   0.f,  0, 0.f)    \
     X (dlRoute, "FX Routing",           0.f,   2.f,   0.f,  2, 0.f)    \
-    X (p1t,     "Pressure 1 Target",    0.f,   7.f,   0.f,  2, 0.f)    \
-    X (p1a,     "Pressure 1 Amount",   -1.f,   1.f,   0.5f, 0, 0.f)    \
-    X (p2t,     "Pressure 2 Target",    0.f,   7.f,   1.f,  2, 0.f)    \
-    X (p2a,     "Pressure 2 Amount",   -1.f,   1.f,   0.6f, 0, 0.f)    \
-    X (p3t,     "Pressure 3 Target",    0.f,   7.f,   3.f,  2, 0.f)    \
-    X (p3a,     "Pressure 3 Amount",   -1.f,   1.f,   0.f,  0, 0.f)    \
+    X (m1s,    "Mod 1 Source",        0.f,  15.f,   1.f,  2, 0.f)    \
+    X (m1d,    "Mod 1 Target",        0.f,  11.f,   0.f,  2, 0.f)    \
+    X (m1a,    "Mod 1 Amount",       -1.f,   1.f,   0.5f, 0, 0.f)    \
+    X (m2s,    "Mod 2 Source",        0.f,  15.f,   1.f,  2, 0.f)    \
+    X (m2d,    "Mod 2 Target",        0.f,  11.f,   1.f,  2, 0.f)    \
+    X (m2a,    "Mod 2 Amount",       -1.f,   1.f,   0.6f, 0, 0.f)    \
+    X (m3s,    "Mod 3 Source",        0.f,  15.f,   3.f,  2, 0.f)    \
+    X (m3d,    "Mod 3 Target",        0.f,  11.f,   3.f,  2, 0.f)    \
+    X (m3a,    "Mod 3 Amount",       -1.f,   1.f,   0.0f, 0, 0.f)    \
+    X (m4s,    "Mod 4 Source",        0.f,  15.f,   0.f,  2, 0.f)    \
+    X (m4d,    "Mod 4 Target",        0.f,  11.f,   0.f,  2, 0.f)    \
+    X (m4a,    "Mod 4 Amount",       -1.f,   1.f,   0.0f, 0, 0.f)    \
+    X (m5s,    "Mod 5 Source",        0.f,  15.f,   0.f,  2, 0.f)    \
+    X (m5d,    "Mod 5 Target",        0.f,  11.f,   0.f,  2, 0.f)    \
+    X (m5a,    "Mod 5 Amount",       -1.f,   1.f,   0.0f, 0, 0.f)    \
+    X (m6s,    "Mod 6 Source",        0.f,  15.f,   0.f,  2, 0.f)    \
+    X (m6d,    "Mod 6 Target",        0.f,  11.f,   0.f,  2, 0.f)    \
+    X (m6a,    "Mod 6 Amount",       -1.f,   1.f,   0.0f, 0, 0.f)    \
     X (pcurve,  "Pressure Curve",       0.4f,  2.5f,  1.f,  0, 1.f)    \
     X (mpe,     "MPE",                  0.f,   1.f,   0.f,  1, 0.f)    \
     X (bend,    "Bend Range",           1.f,  48.f,   2.f,  0, 0.f)    \
@@ -80,8 +94,9 @@ inline const ParamDef* paramDefs()
 
 constexpr float kPi = 3.14159265358979f;
 constexpr int kVoices = 8;
-constexpr int kTargets = 8;           // FEEDBACK WIND FOCUS BRIGHT DRIVE BREATH PITCH FM
+constexpr int kTargets = 12;           // FEEDBACK WIND FOCUS BRIGHT DRIVE BREATH PITCH FM
 constexpr float kTapGain = 2.5f;
+constexpr float kBowTune = 0.f, kReedTune = 0.f, kStrTune = 1.0262f, kRoomTune = 1.f;      // corrections d'accord (calibrees par mesure)
 
 inline float fastTanh (float x)       // rationnelle, bornee a +-1
 {
@@ -93,7 +108,7 @@ inline float fastTanh (float x)       // rationnelle, bornee a +-1
 // ---------------------------------------------------------------- briques
 struct Svf          // filtre a variables d'etat (TPT) : passe-bande normalise, gain 1 au centre
 {
-    float ic1 = 0.f, ic2 = 0.f, a1 = 0.f, a2 = 0.f, a3 = 0.f, k = 1.f;
+    float ic1 = 0.f, ic2 = 0.f, a1 = 0.f, a2 = 0.f, a3 = 0.f, k = 1.f, lo = 0.f, hi = 0.f;
     void set (float fc, float Q, float fs)
     {
         const float g = std::tan (kPi * std::min (fc, 0.45f * fs) / fs);
@@ -104,6 +119,7 @@ struct Svf          // filtre a variables d'etat (TPT) : passe-bande normalise, 
     {
         const float v3 = v0 - ic2, v1 = a1 * ic1 + a2 * v3, v2 = ic2 + a2 * ic1 + a3 * v3;
         ic1 = 2.f * v1 - ic1; ic2 = 2.f * v2 - ic2;
+        lo = v2; hi = v0 - k * v1 - v2;
         return k * v1;
     }
     void reset() { ic1 = ic2 = 0.f; }
@@ -281,6 +297,24 @@ inline const FmSound& fmSound (int i)
     return t[std::max (0, std::min (5, i))];
 }
 
+// ---------------------------------------------------------------- plaque / cloche : rapports de modes (barre, cloche, plaque, bol) et voyelles (formants)
+inline void modeRatios (float morph, float* r)
+{
+    static const float sets[4][8] {
+        { 1.f, 2.76f, 5.40f, 8.93f, 13.34f, 18.64f, 24.8f, 32.0f },      // barre
+        { 1.f, 2.00f, 2.40f, 3.00f, 4.00f,  5.00f,  6.40f, 8.00f },      // cloche
+        { 1.f, 1.58f, 2.50f, 2.90f, 3.90f,  4.60f,  5.50f, 6.60f },      // plaque
+        { 1.f, 2.71f, 5.15f, 8.43f, 12.5f,  17.6f,  23.4f, 30.0f } };    // bol chantant
+    const float m = std::max (0.f, std::min (0.9999f, morph)) * 3.f; const int i = (int) m; const float f = m - (float) i;
+    for (int k = 0; k < 8; ++k) r[k] = sets[i][k] * (1.f - f) + sets[i + 1][k] * f;
+}
+inline void vowelFormants (float pos, float* fr)       // pos 0..1 : A E I O U
+{
+    static const float t[5][3] { { 800.f, 1150.f, 2900.f }, { 400.f, 1700.f, 2600.f }, { 350.f, 2000.f, 2800.f }, { 450.f, 800.f, 2830.f }, { 325.f, 700.f, 2530.f } };
+    const float m = std::max (0.f, std::min (0.9999f, pos)) * 4.f; const int i = (int) m; const float f = m - (float) i;
+    for (int k = 0; k < 3; ++k) fr[k] = t[i][k] * (1.f - f) + t[i + 1][k] * f;
+}
+
 // ---------------------------------------------------------------- moteur
 class Zephyr
 {
@@ -294,13 +328,14 @@ public:
     void prepare (float sampleRate)
     {
         fs = sampleRate;
-        for (auto& v : voices) { v = Voice(); v.dl.prepare ((int) (fs / 12.f) + 16); }
+        for (auto& v : voices) { v = Voice(); v.dl.prepare ((int) (fs / 12.f) + 16); v.dl2.prepare ((int) (fs / 12.f) + 16); }
         reverb.prepare (fs); delay.prepare (fs);
         for (int i = 0; i < 64; ++i) dlFed[i] = dlFedNext[i] = 0.f;
         for (int c = 0; c < 16; ++c) chanP[c] = 0.f, bendCh[c] = 0.f;
-        mw = 0.f; held = false; sustainPedal = false; pkS = 0.f; stamp = 0;
+        mw = 0.f; for (auto& c : ccVal) c = 0.f; for (auto& g : gS) g = 0.f; held = false; sustainPedal = false; pkS = 0.f; stamp = 0;
     }
 
+    void setLearn (int a, int b) { learnA = a; learnB = b; }
     void setParams (const float* v)
     {
         for (int i = 0; i < kNumP; ++i) p[i] = v[i];
@@ -325,8 +360,8 @@ public:
             for (auto& x : voices) { const float sc = (x.keyDown ? 1000.f : 0.f) + x.env * 100.f - (float) (stamp - x.age) * 1e-6f; if (sc < best) { best = sc; v = &x; } }
         }
         const bool fresh = ! v->active;
-        if (fresh) { v->dl.clear(); v->bp.reset(); v->lp = 0.f; v->env = 0.f; v->pos = 1.f; v->h = 1.f; v->q = note; v->posSemi = (float) note; v->pressS = 0.f; v->d = 2.f; v->dInit = false; }
-        v->active = true; v->keyDown = true; v->deferred = false; v->releasing = false;
+        if (fresh) { v->dl.clear(); v->dl2.clear(); v->dcx = v->dcy = 0.f; v->envP = 0.f; v->gph = v->gs = v->chLp = 0.f; for (int k = 0; k < 8; ++k) v->my1[k] = v->my2[k] = 0.f; for (auto& q : v->fm3) q.reset(); v->bp.reset(); v->mm.reset(); v->lp = 0.f; v->env = 0.f; v->pos = 1.f; v->h = 1.f; v->q = note; v->posSemi = (float) note; v->pressS = 0.f; for (auto& q : v->slotS) q = 0.f; v->d = 2.f; v->dInit = false; }
+        v->active = true; v->keyDown = true; v->deferred = false; v->releasing = false; v->dg = 1.f; v->atkDone = false;
         v->note = note; v->ch = ch; v->vel = vel; v->age = ++stamp;
         v->kick = 0.25f * (0.3f + vel); v->polyP = 0.f; v->fmT = 0.f; v->fmPhC = v->fmPhM = v->fmFbS = 0.f;
         v->detuneCents = (rng.next()) * p[p_detune];
@@ -354,6 +389,7 @@ public:
     void controller (int ch, int num, float val)
     {
         ++midiCount;
+        ccVal[num & 127] = val;
         if (num == 1) mw = val;
         else if (num == 64) { const bool on = val >= 0.5f; if (sustainPedal && ! on) { sustainPedal = false; releaseDeferred(); } sustainPedal = on; }
         else if (num == 123 || num == 120) for (auto& x : voices) if (x.active) { x.keyDown = false; x.releasing = true; x.deferred = false; }
@@ -373,6 +409,27 @@ public:
             float busL[256], busR[256];
             for (int i = 0; i < m; ++i) busL[i] = busR[i] = 0.f;
             int act = 0;
+            {                                                                           // modulation des effets (globale : sources les plus fortes parmi les voix)
+                float polyMax = 0.f, chanMax = 0.f, velMax = 0.f;
+                for (auto& x : voices) if (x.active && (x.keyDown || x.deferred)) { polyMax = std::max (polyMax, x.polyP); velMax = std::max (velMax, x.vel); }
+                for (int c = 0; c < 16; ++c) chanMax = std::max (chanMax, chanP[c]);
+                for (int k = 0; k < kTargets; ++k) gm[k] = 0.f;
+                const float cf = 1.f - std::exp (-(float) m / fs / 0.025f);
+                for (int k = 0; k < 6; ++k)
+                {
+                    const int sr = (int) p[p_m1s + 3 * k], dst = (int) p[p_m1d + 3 * k];
+                    float val = 0.f;
+                    if (sr == 1) val = polyMax; else if (sr == 2) val = chanMax; else if (sr == 3) val = ccVal[1]; else if (sr == 4) val = ccVal[11];
+                    else if (sr == 5) val = velMax; else if (sr >= 6 && sr <= 13) val = ccVal[16 + sr - 6];
+                    else if (sr == 14) val = learnA >= 0 ? ccVal[learnA & 127] : 0.f; else if (sr == 15) val = learnB >= 0 ? ccVal[learnB & 127] : 0.f;
+                    if (sr >= 1 && sr <= 2) val = std::pow (std::max (0.f, std::min (1.f, val)), p[p_pcurve]);
+                    gS[k] += (val - gS[k]) * cf;
+                    if (dst >= 9) gm[dst] += p[p_m1a + 3 * k] * gS[k];
+                }
+                auto cg = [] (float x) { return std::max (0.f, std::min (1.f, x)); };
+                reverb.setParams (p[p_rvSize], p[p_rvDamp], cg (p[p_rvMix] + gm[11]));
+                delay.setParams ((int) p[p_dlMode], p[p_dlTime], cg (p[p_dlFb] + gm[10]), p[p_dlMod], p[p_dlRate], p[p_dlTone]);
+            }
             for (int vi = 0; vi < kVoices; ++vi)
             {
                 auto& v = voices[vi];
@@ -386,7 +443,7 @@ public:
             }
             activeVoices.store (act);
             const float dg = reverb.dryGain();
-            const int rt = (int) p[p_dlRoute]; const float dm = p[p_dlMix];
+            const int rt = (int) p[p_dlRoute]; const float dm = std::max (0.f, std::min (1.f, p[p_dlMix] + gm[9]));
             for (int i = 0; i < m; ++i)
             {
                 const float bl = busL[i], br = busR[i];
@@ -431,12 +488,14 @@ private:
         int note = 60, ch = 0, q = 60; float vel = 0.f, polyP = 0.f, pressS = 0.f, env = 0.f, kick = 0.f;
         float pos = 1.f, h = 1.f, posSemi = 60.f, detuneCents = 0.f, panPos = 0.f;
         float lp = 0.f, d = 2.f, dTarget = 2.f, gain = 0.9f, dr = 1.f, bpOut = 0.f;
-        float noiseAmp = 0.f, extAmp = 0.f, atkC = 0.001f, relC = 0.9999f;
+        Svf mm; float morph = 0.5f, dg = 1.f, decC = 0.f; bool atkDone = false; float noiseAmp = 0.f, extAmp = 0.f, atkC = 0.001f, relC = 0.9999f;
         int64_t age = 0; int ctl = 0;
-        Svf bp; DelayLine dl; Rng rng;
+        Svf bp; DelayLine dl, dl2; Rng rng;
+        float fbNow = 0.3f, envP = 0.f, wn = 0.f, strG = 0.99f, strPos = 0.2f, chG = 0.95f, gph = 0.f, gs = 0.f, chLp = 0.f; float mb[8] {}, mcf[8] {}, mr2[8] {}, my1[8] {}, my2[8] {}; Svf fm3[3]; float fmw[3] {};
+        float outEnv = 1.f, beta = 0.3f, slope = 3.f, bowV = 0.1f, rSlope = -0.3f, rNoise = 0.f, rPress = 0.4f, dcx = 0.f, dcy = 0.f;
         float lpC = 0.5f, lpDelay = 0.f, drv = 1.f, tapNorm = 0.5f; float dStep = 0.f;
         float level = 0.f;
-        float fmT = 0.f, fmPhC = 0.f, fmPhM = 0.f, fmFbS = 0.f, fmGate = 0.f, fmAmt = 0.f, fmF = 440.f;
+        float slotS[6] {}; float fmChM = 0.f; float fmT = 0.f, fmPhC = 0.f, fmPhM = 0.f, fmFbS = 0.f, fmGate = 0.f, fmAmt = 0.f, fmF = 440.f;
     };
     Voice voices[kVoices];
     Reverb reverb;
@@ -444,6 +503,7 @@ private:
     float dlFed[64] {}, dlFedNext[64] {};
     Rng rng;
     float p[kNumP] {};
+    float ccVal[128] {}; int learnA = -1, learnB = -1; float gS[6] {}, gm[kTargets] {};
     float fs = 44100.f, outLin = 0.4f, chanP[16] {}, bendCh[16] {}, mw = 0.f, pkS = 0.f;
     bool held = false, sustainPedal = false;
     int64_t stamp = 0;
@@ -469,7 +529,8 @@ private:
     void runVoice (Voice& v, int vi, float* out, int n, const float* extL, const float* extR)
     {
         constexpr int CT = 16;
-        const bool pipe = p[p_mode] < 0.5f, harmonic = p[p_lock] < 0.5f, mpe = p[p_mpe] > 0.5f;
+        const int body = (int) p[p_mode];
+        const bool pipe = ! (body == 1 || body >= 8), harmonic = p[p_lock] < 0.5f, mpe = p[p_mpe] > 0.5f;
         const float dt = (float) CT / fs;
         const int* mask = scaleMask ((int) p[p_scale]);
         const int root = (int) p[p_root];
@@ -478,23 +539,40 @@ private:
         const float atkMs = p[p_atk], relMs = p[p_rel];
         v.atkC = 1.f - std::exp (-1.f / (std::max (3.f, atkMs) * 0.001f * fs * 0.45f));
         v.relC = std::exp (-6.9f / (std::max (20.f, relMs) * 0.001f * fs));
+        v.decC = std::exp (-6.9f / (std::max (20.f, p[p_dec]) * 0.001f * fs));
+        const float susL = p[p_sus];
 
         for (int i = 0; i < n; ++i)
         {
             if (v.ctl == 0)
             {
-                // ---- pression -> sources de modulation
+                // ---- matrice de modulation : chaque emplacement = une source, une cible, un dosage
                 const float chp = mpe ? chanP[v.ch & 15] : *std::max_element (chanP, chanP + 16);
-                float pr = std::max (v.polyP, std::max (chp, mw));
-                if (! v.keyDown) pr = v.deferred ? v.polyP : 0.f;                       // une note relachee (ou tenue par HOLD / pedale) ne repart jamais sur la pression d'une AUTRE touche ou d'une molette
-                pr = std::pow (std::max (0.f, std::min (1.f, pr)), p[p_pcurve]);
-                v.pressS += (pr - v.pressS) * (1.f - std::exp (-dt / 0.025f));
+                const bool alive = v.keyDown || v.deferred;
                 float m[kTargets] {};
-                m[(int) p[p_p1t]] += p[p_p1a] * v.pressS; m[(int) p[p_p2t]] += p[p_p2a] * v.pressS; m[(int) p[p_p3t]] += p[p_p3a] * v.pressS;
                 auto cl = [] (float x) { return std::max (0.f, std::min (1.f, x)); };
+                for (int k = 0; k < 6; ++k)
+                {
+                    const int sr = (int) p[p_m1s + 3 * k], dst = (int) p[p_m1d + 3 * k];
+                    if (sr == 0) { v.slotS[k] += (0.f - v.slotS[k]) * 0.5f; continue; }
+                    float val = 0.f;
+                    if (sr == 1) val = v.keyDown || v.deferred ? v.polyP : 0.f;
+                    else if (sr == 2) val = v.keyDown ? chp : 0.f;
+                    else if (sr == 3) val = ccVal[1];
+                    else if (sr == 4) val = ccVal[11];
+                    else if (sr == 5) val = v.vel;
+                    else if (sr >= 6 && sr <= 13) val = ccVal[16 + sr - 6];
+                    else if (sr == 14) val = learnA >= 0 ? ccVal[learnA & 127] : 0.f;
+                    else if (sr == 15) val = learnB >= 0 ? ccVal[learnB & 127] : 0.f;
+                    if (sr <= 2) val = std::pow (cl (val), p[p_pcurve]);
+                    if (! alive && sr > 2) val = v.slotS[k];                              // une note qui s'eteint garde la modulation qu'elle avait
+                    v.slotS[k] += (val - v.slotS[k]) * (1.f - std::exp (-dt / 0.025f));
+                    m[std::max (0, std::min (kTargets - 1, dst))] += p[p_m1a + 3 * k] * v.slotS[k];
+                }
+                v.pressS = v.slotS[0];
                 const float fbE = cl (p[p_fb] + m[0]), windE = cl (p[p_wind] + m[1]), focE = cl (p[p_focus] + m[2]);
                 const float briE = cl (p[p_bright] + m[3]), drvE = cl (p[p_drive] + m[4]), brE = cl (p[p_breath] + m[5]);
-                const float pitchMod = 2.f * m[6], fmE = cl (p[p_fm] + m[7]);
+                const float pitchMod = 2.f * m[6], fmE = cl (p[p_fm] + m[7]); v.fmChM = m[8];
                 const float bendSemi = (mpe ? bendCh[v.ch & 15] : bendCh[0]) * p[p_bend];
                 const float semi = (float) v.note + bendSemi + v.detuneCents * 0.01f + pitchMod;
                 const float glideC = 1.f - std::exp (-dt / (std::max (5.f, p[p_glide]) * 0.001f));
@@ -528,7 +606,8 @@ private:
                 }
                 fBP = std::max (20.f, std::min (0.42f * fs, fBP)); fLoop = std::max (16.f, std::min (0.4f * fs, fLoop));
                 const float Q = std::max (0.8f, 0.8f * std::pow (15.f, focE) * (harmonic ? v.pos : 1.f));
-                const float fcut = std::min (0.45f * fs, std::max (fBP, fLoop) * (1.1f + 14.f * briE * briE));
+                const float briL = (body == 9) ? 0.5f : briE;                                // MULTIMODE : BRIGHT sert a choisir le mode du filtre, pas la coupure de la boucle
+                const float fcut = std::min (0.45f * fs, std::max (fBP, fLoop) * (1.1f + 14.f * briL * briL));
                 const float a = std::exp (-2.f * kPi * fcut / fs);
                 v.lpC = 1.f - a; v.lpDelay = a / (1.f - a);
                 const float w0 = 2.f * kPi * fBP / fs;                                  // perte de l'amortissement a la frequence qui oscille :
@@ -536,6 +615,16 @@ private:
                 const float lpPh = std::atan2 (a * std::sin (w0), 1.f - a * std::cos (w0)) / std::max (1e-4f, w0);
                 v.lpDelay = lpPh;
                 float D = pipe ? fs / fLoop - 1.f - v.lpDelay : 1.f;
+                if (body == 2) D = 0.5f * fs / fLoop * 1.0359f - 1.f - v.lpDelay + kBowTune;                // archet : une ligne avec inversion, retard = demi-periode
+                else if (body == 4) D = fs / fLoop * kStrTune - 1.f - v.lpDelay;                       // corde pincee : boucle simple
+                else if (body == 7) D = fs / fLoop - 1.f;                                              // choeur : la hauteur est imposee par la source glottale
+                else if (body == 6)                                                                    // larsen de piece : la boucle est longue (k periodes) et la salle bouge
+                {
+                    const float P = fs / fLoop; const float k = std::max (1.f, std::min (40.f, std::floor (0.02f * fs / P)));
+                    v.wn += (v.rng.next() - v.wn) * 0.01f;
+                    D = k * P * kRoomTune - 1.f - v.lpDelay + 3.f * v.wn;
+                }
+                else if (body == 3) D = 0.5f * fs / fLoop * 1.0359f - 1.f - v.lpDelay + kReedTune;           // anche : demi-onde (tube cylindrique, harmoniques impaires)
                 D = std::max (2.f, std::min (maxD, D));
                 if (! v.dInit) { v.d = D; v.dInit = true; }
                 v.dTarget = D; v.dStep = (D - v.d) / (float) CT;
@@ -547,15 +636,48 @@ private:
                     const float gc = std::tan (kPi * std::min (fBP, 0.45f * fs) / fs) / x;
                     fcBP = fs / kPi * std::atan (gc); phiComp = std::cos (phi);
                 }
-                v.bp.set (fcBP, Q, fs);
+                v.bp.set (fcBP, Q, fs); if (body == 9) v.mm.set (fBP, 0.9f, fs);
                 const float comp = std::max (0.3f, lpGain * phiComp);
                 float g = (0.88f + 0.30f * fbE) / comp;
                 if (v.releasing) g = std::min (g, 0.9f / comp);
                 v.gain = g;
                 v.drv = 1.f + 7.f * drvE * drvE;
-                v.tapNorm = 0.5f / std::sqrt (v.drv);
+                v.tapNorm = 0.5f / std::sqrt (v.drv); v.morph = briE;
                 v.noiseAmp = 0.12f * brE * brE * (0.3f + v.vel);
                 v.extAmp = p[p_dlLoop] * 0.6f; v.fmAmt = fmE; v.fmF = std::max (20.f, std::min (0.4f * fs, fLoop));
+                {
+                    const float bowPress = 0.12f + 0.75f * fbE;
+                    v.slope = (5.f - 4.f * bowPress) * (0.7f + 0.6f * focE) * (1.f + 1.5f * windE);
+                    v.bowV = 0.04f + 0.26f * brE;
+                    v.beta = 0.3f;
+                    v.rPress = 0.48f + 0.52f * fbE;
+                    v.rSlope = -0.3f - 0.025f * windE;
+                    v.rNoise = 0.35f * brE * brE;
+                    v.strG = 0.985f + 0.0155f * fbE;
+                    v.strPos = 0.05f + 0.45f * (1.f - focE);
+                    v.chG = 0.90f + 0.15f * fbE; v.fbNow = fbE;
+                    if (body == 5)                                                              // PLAQUE : 8 modes
+                    {
+                        float rt[8]; modeRatios (windE, rt);
+                        const float T0 = 0.15f + 6.f * fbE * fbE + 0.4f * fbE;
+                        for (int k = 0; k < 8; ++k)
+                        {
+                            const float fk = fLoop * rt[k];
+                            if (fk > 0.45f * fs) { v.mb[k] = 0.f; v.mcf[k] = 0.f; v.mr2[k] = 0.f; continue; }
+                            const float tau = T0 / (1.f + (float) k * (0.6f + 2.f * (1.f - briE)));
+                            const float r = std::exp (-1.f / (std::max (0.01f, tau) * fs));
+                            v.mcf[k] = 2.f * r * std::cos (2.f * kPi * fk / fs); v.mr2[k] = r * r;
+                            v.mb[k] = (1.f - r) * 12.f / (1.f + (float) k * (0.5f + 1.5f * (1.f - briE)));
+                        }
+                    }
+                    if (body == 7)                                                              // CHOEUR : 3 formants (voyelle choisie avec WIND)
+                    {
+                        float fr[3]; vowelFormants (windE, fr);
+                        const float Qf = 6.f + 10.f * focE;
+                        for (int k = 0; k < 3; ++k) v.fm3[k].set (fr[k], Qf, fs);
+                        v.fmw[0] = 1.f; v.fmw[1] = 0.8f; v.fmw[2] = 0.5f;
+                    }
+                }
                 vPos[vi].store (cl (normPos));
             }
             v.ctl = (v.ctl + 1) % CT;
@@ -564,7 +686,19 @@ private:
             const float x = v.dl.read (v.d);
             float y = v.bp.bp (x);
             v.lp += (y - v.lp) * v.lpC; y = v.lp;
-            const float yd = fastTanh (v.drv * y);
+            float yd = fastTanh (v.drv * y);
+            float yo = yd;                                                          // prise de sortie : le coeur de la boucle ne change pas (hauteur stable), seule la couleur change
+            if (body == 8)                                                          // ECHELLE : passe-bas (pente raide) + saturation asymetrique chaude
+            {
+                v.chLp += (v.bp.k * v.bp.lo - v.chLp) * v.lpC;
+                yo = 1.15f * (fastTanh (v.drv * v.chLp + 0.35f) - fastTanh (0.35f));
+            }
+            else if (body == 9)                                                     // MULTIMODE : BRIGHT balaie passe-bas > passe-bande > passe-haut
+            {
+                const float bw = v.mm.bp (x), mp = v.morph, lo = v.mm.lo, hi = v.mm.hi;     // filtre large sur le signal de la boucle : le souffle, le bruit et les harmoniques passent selon le mode
+                const float t = mp < 0.5f ? lo + (bw - lo) * (mp * 2.f) : bw + (hi - bw) * ((mp - 0.5f) * 2.f);
+                yo = fastTanh (v.drv * t);
+            }
             const float s = yd / v.drv;
             float inj = v.rng.next () * (v.noiseAmp + 1e-6f) + v.kick * v.rng.next();
             v.kick *= 0.9985f;
@@ -574,7 +708,7 @@ private:
             if (v.fmAmt > 1e-4f)
             {
                 const FmSound& T = fmSound ((int) p[p_fmType]);
-                const float fun = p[p_fmChar], dec = p[p_fmDecay];
+                const float fun = std::max (0.f, std::min (1.f, p[p_fmChar] + v.fmChM)), dec = p[p_fmDecay];
                 v.fmT += 1.f / fs;
                 const float ampEnv = dec >= 7.9f ? 1.f : std::exp (-v.fmT / std::max (0.02f, dec * T.decS));
                 float idxEnv = std::exp (-v.fmT / std::max (0.02f, std::min (dec, 4.f) * T.idxDecS));
@@ -592,13 +726,88 @@ private:
             const float route = p[p_fmRoute];
             inj += fmOut * v.fmAmt * 0.35f * std::min (1.f, 2.f * (1.f - route));
             out[i] += fmOut * v.fmAmt * 0.2f * std::min (1.f, 2.f * route);
-            v.dl.write (inj + v.gain * s);
+            float yb = 0.f;
+            const bool newBody = body >= 2 && body != 6 && body < 8;
+            if (newBody)
+            {
+                const float injB = 0.3f * inj;
+                if (body == 2)                                                           // ARCHET : corde frottee (une ligne, le frottement colle / glisse a chaque aller-retour)
+                {
+                    v.lp += (v.dl.read (v.d) - v.lp) * v.lpC;
+                    const float vs = -v.lp;
+                    const float velDiff = v.bowV * v.env - vs;
+                    const float xx = std::fabs (velDiff * v.slope) + 0.75f, x2 = xx * xx, tab = std::min (1.f, 1.f / (x2 * x2));
+                    yb = vs * 4.f;
+                    v.dl.write (0.998f * vs + velDiff * tab + injB);
+                }
+                else if (body == 4)                                                      // CORDE PINCEE (Karplus-Strong) + position du pincement
+                {
+                    const float x = v.dl.read (v.d);
+                    v.lp += (x - v.lp) * v.lpC;
+                    const float injS = 4.2f * std::max (0.4f, std::min (2.f, std::pow (261.f / v.fmF, 0.47f))) * inj;
+                    v.dl2.write (injS);
+                    const float injC = injS - v.dl2.read (std::max (2.f, v.strPos * v.d));
+                    const float sl = fastTanh (v.drv * v.lp) / v.drv;
+                    v.dl.write (v.strG * sl + injC);
+                    yb = v.lp * 2.f;
+                }
+                else if (body == 5)                                                      // PLAQUE / CLOCHE / BOL : 8 resonateurs modaux
+                {
+                    const float exc = 4.f * 1.8f * std::max (0.5f, std::min (8.f, std::pow (v.fmF / 100.f, 0.75f))) * inj;
+                    float sum = 0.f;
+                    for (int k = 0; k < 8; ++k)
+                    {
+                        const float yv = v.mb[k] * exc + v.mcf[k] * v.my1[k] - v.mr2[k] * v.my2[k];
+                        v.my2[k] = v.my1[k]; v.my1[k] = yv; sum += yv;
+                    }
+                    yb = sum;
+                }
+                else if (body == 7)                                                      // CHOEUR : source glottale -> boucle -> 3 formants
+                {
+                    v.gph += v.fmF / fs; bool wrap = false; if (v.gph >= 1.f) { v.gph -= 1.f; wrap = true; }
+                    v.gs += ((wrap ? 1.f : 0.f) - v.gs) * 0.35f;
+                    const float src = 7.f * v.gs * (0.5f + v.fbNow) + 0.5f * inj;
+                    const float x = v.dl.read (v.d);
+                    const float u = src + v.chG * x;
+                    float y = 0.f;
+                    for (int k = 0; k < 3; ++k) y += v.fmw[k] * v.fm3[k].bp (u);
+                    v.chLp += (u - v.chLp) * 0.06f; y += 0.35f * v.chLp;
+                    y = fastTanh (y);
+                    v.dl.write (y);
+                    yb = y * 1.6f * std::max (0.6f, std::min (3.f, std::sqrt (v.fmF / 261.f)));
+                }
+                else                                                                     // ANCHE (clarinette) : souffle -> anche -> tube
+                {
+                    const float dlOut = v.dl.read (v.d);
+                    v.lp += (dlOut - v.lp) * v.lpC;
+                    const float breath = v.rPress * v.env * (1.f + v.rNoise * v.rng.next());
+                    const float pd = -0.95f * v.lp - breath;
+                    const float rt = std::max (-1.f, std::min (1.f, 0.7f + v.rSlope * pd));
+                    v.dl.write (breath + pd * rt + injB);
+                    yb = dlOut;
+                }
+                const float dcy = yb - v.dcx + 0.995f * v.dcy; v.dcx = yb; v.dcy = dcy; yb = dcy;       // retire la composante continue
+                yb = fastTanh (yb);
+            }
+            else v.dl.write (inj + v.gain * s);
             // ---- enveloppe
             if (v.releasing || (! v.keyDown && ! v.deferred)) v.env *= v.relC;
-            else v.env += (1.f - v.env) * v.atkC;
+            else { v.env += (1.f - v.env) * v.atkC; if (v.env > 0.9f) v.atkDone = true; }
+            if (v.atkDone && ! (v.releasing || (! v.keyDown && ! v.deferred))) v.dg = susL + (v.dg - susL) * v.decC;
+            if (v.releasing || (! v.keyDown && ! v.deferred)) v.envP *= v.relC; else v.envP += (1.f - v.envP) * 0.01f;
+            v.outEnv = (body == 4 || body == 5 || body == 7) ? v.envP : v.env;
             const float lv = v.level * 25.f;                                        // sous le seuil d'auto-oscillation (pas de pression) : on remonte le niveau, effet nul des que la note chante
-            out[i] += yd * v.tapNorm * v.env * kTapGain * (1.f + 8.f / (1.f + lv * lv));
-            v.level = std::max (v.level * 0.9995f, std::fabs (yd * v.tapNorm * v.env));
+            if (newBody)
+            {
+                const float tb = yb * (body == 2 ? 1.f : 0.8f) * v.outEnv * v.dg;
+                out[i] += tb;
+                v.level = std::max (v.level * 0.9995f, std::fabs (tb));
+            }
+            else
+            {
+                out[i] += yo * v.tapNorm * v.env * v.dg * kTapGain * (1.f + 8.f / (1.f + lv * lv));
+                v.level = std::max (v.level * 0.9995f, std::fabs (yo * v.tapNorm * v.env));
+            }
         }
         vLvl[vi].store (std::min (1.f, v.level * 3.f));
         if ((v.releasing || (! v.keyDown && ! v.deferred)) && v.env < 1e-4f && v.fmGate < 1e-4f) { v.active = false; v.level = 0.f; }

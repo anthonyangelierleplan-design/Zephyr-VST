@@ -32,22 +32,14 @@ const juce::Image& speckTile()
     return img;
 }
 
-void drawSpecks (juce::Graphics& g, juce::Rectangle<int> r)
-{
-    juce::Graphics::ScopedSaveState ss (g);
-    g.reduceClipRegion (r);
-    const auto& t = speckTile();
-    for (int y = r.getY(); y < r.getBottom(); y += 256)
-        for (int x = r.getX(); x < r.getRight(); x += 256)
-            g.drawImageAt (t, x, y);
-}
+void drawSpecks (juce::Graphics&, juce::Rectangle<int>) {}          // version sobre : plus de poussieres
 
 void drawPlate (juce::Graphics& g, juce::Rectangle<float> b)
 {
-    g.setColour (juce::Colour (0xff0b0b0c).withAlpha (0.45f));                  // panneau noir, zone sérigraphiée
-    g.fillRect (b.reduced (1.f));
-    g.setColour (look::print.withAlpha (0.72f));
-    g.drawRect (b.reduced (1.f), 1.4f);
+    g.setColour (juce::Colour (0xff0e0e10).withAlpha (0.55f));                  // panneau sobre
+    g.fillRoundedRectangle (b.reduced (1.f), 3.f);
+    g.setColour (look::print.withAlpha (0.30f));
+    g.drawRoundedRectangle (b.reduced (1.f), 3.f, 1.f);
 }
 
 // pictogrammes d'ondes (selecteurs de forme d'onde, facon MS20)
@@ -129,37 +121,11 @@ void OrageLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w,
         g.setColour (juce::Colours::white.withAlpha (0.035f));
         g.drawEllipse (c.x - rr2, c.y - rr2, rr2 * 2.f, rr2 * 2.f, 0.7f);
     }
-    {
-        juce::Graphics::ScopedSaveState ss (g);
-        juce::Path clip; clip.addEllipse (c.x - tr, c.y - tr, tr * 2.f, tr * 2.f);
-        g.reduceClipRegion (clip);
-        for (int k = 0; k < 9; ++k)
-        {
-            const float ax = c.x + (rr.nextFloat() - 0.5f) * tr * 2.f, ay = c.y + (rr.nextFloat() - 0.5f) * tr * 2.f;
-            const float a = rr.nextFloat() * juce::MathConstants<float>::twoPi, len = 4.f + rr.nextFloat() * tr * 0.9f;
-            g.setColour (juce::Colour::fromRGBA (200, 200, 205, (juce::uint8) (14 + rr.nextInt (40))));
-            g.drawLine (ax, ay, ax + len * std::cos (a), ay + len * std::sin (a), 0.5f + rr.nextFloat() * 0.5f);
-        }
-        for (int k = 0; k < 40; ++k)
-        {
-            g.setColour (juce::Colour::fromRGBA (150, 150, 150, (juce::uint8) (20 + rr.nextInt (40))));
-            g.fillRect (c.x + (rr.nextFloat() - 0.5f) * tr * 2.f, c.y + (rr.nextFloat() - 0.5f) * tr * 2.f, 1.f, 1.f);
-        }
-    }
-    for (int k = 0; k < 16; ++k)
-    {
-        const float a = rr.nextFloat() * juce::MathConstants<float>::twoPi;
-        g.setColour (juce::Colour::fromRGBA (160, 160, 165, (juce::uint8) (40 + rr.nextInt (60))));
-        g.fillRect (c.x + kr * 0.97f * std::sin (a), c.y - kr * 0.97f * std::cos (a), 1.6f, 1.6f);
-    }
     juce::Path p;
     p.addRoundedRectangle (-1.7f, -tr * 0.98f, 3.4f, tr * 0.64f, 1.2f);
     const auto xf = juce::AffineTransform::rotation (angle).translated (c.x, c.y);
     g.setColour (juce::Colour (0xfff0ece0).withAlpha (0.9f * alpha));
     g.fillPath (p, xf);
-    g.setColour (juce::Colour (0xff121213).withAlpha (0.85f));
-    juce::Path nick; nick.addRectangle (-2.2f, -tr * (0.55f + 0.3f * rr.nextFloat()), 4.4f, 1.4f);
-    g.fillPath (nick, xf);
 }
 
 // ================================================================ potard
@@ -198,14 +164,14 @@ void KnobUnit::paint (juce::Graphics& g)
         g.fillEllipse (c.x + rad * std::sin (a) - dot * 0.5f, c.y - rad * std::cos (a) - dot * 0.5f, dot, dot);
         if (numbered)                                                              // chiffres 0..10 autour du bouton, comme le MS20
         {
-            g.setFont (font (8.f));
+            g.setFont (font (10.f));
             g.drawText (juce::String (i), (int) (c.x + r * 0.93f * std::sin (a)) - 7, (int) (c.y - r * 0.93f * std::cos (a)) - 5, 14, 10,
                         juce::Justification::centred, false);
         }
     }
     if (! numbered)
     {
-        g.setFont (font (8.5f));
+        g.setFont (font (10.5f));
         g.setColour (look::print.withAlpha (0.8f * alpha));
         const int lw = juce::jmin (56, getWidth() / 2 - 1), ly = (int) (c.y + r * 0.88f);
         g.drawText (loText, juce::jmax (0, (int) (c.x - r * 0.78f) - lw / 2), ly, lw, 11, juce::Justification::centred, false);
@@ -218,7 +184,7 @@ void KnobUnit::paint (juce::Graphics& g)
         g.setColour (look::cvRing.withAlpha (0.95f * alpha));
         g.fillEllipse (c.x + rad * std::sin (a) - 2.f, c.y - rad * std::cos (a) - 2.f, 4.f, 4.f);
     }
-    g.setFont (font (getWidth() < 80 ? 10.f : 11.f));
+    g.setFont (font (getWidth() < 80 ? 11.5f : 12.5f));
     g.setColour (look::print.withAlpha (0.95f * alpha));
     g.drawText (text, -4, getHeight() - 15, getWidth() + 8, 14, juce::Justification::centred, false);
     if (cvActive)                                                            // un cable CV est branche sur ce reglage
@@ -257,12 +223,12 @@ void SegmentSelector::paint (juce::Graphics& g)
         const auto glyphArea = r.withTrimmedTop (13.f).withTrimmedBottom (r.getHeight() > 36.f ? 11.f : 0.f).reduced (7.f, 2.f);
         if (r.getHeight() > 36.f && drawGlyph (g, labels[i], glyphArea))
         {
-            g.setFont (font (8.f));
+            g.setFont (font (10.f));
             g.drawText (labels[i], r.withTrimmedTop (r.getHeight() - 12.f), juce::Justification::centred, false);
         }
         else
         {
-            g.setFont (font (9.5f));
+            g.setFont (font (11.f));
             g.drawText (labels[i], r.withTrimmedTop (10.f), juce::Justification::centred, false);
         }
     }
@@ -287,7 +253,7 @@ void LedToggle::paintButton (juce::Graphics& g, bool, bool down)
     g.setColour (on ? juce::Colour (0xffff9a3a) : juce::Colour (0xff3a1408));
     g.fillEllipse (led);
     g.setColour (on ? look::print : look::print.withAlpha (0.6f));
-    g.setFont (font (10.f));
+    g.setFont (font (11.5f));
     g.drawText (getButtonText(), r.withTrimmedLeft (22.f), juce::Justification::centredLeft, false);
 }
 
@@ -310,7 +276,7 @@ void FootSwitch::paintButton (juce::Graphics& g, bool, bool down)
     g.setColour (juce::Colour (0xff202022));
     g.drawEllipse (s.reduced (d * 0.2f), 2.f);
     g.setColour (juce::Colour (0xff111111));
-    g.setFont (font (11.f));
+    g.setFont (font (12.5f));
     g.drawText ("ON", s, juce::Justification::centred, false);
 }
 
@@ -351,12 +317,12 @@ void VuMeter::paint (juce::Graphics& g)
         if (i % 6 == 0)
         {
             const auto t = pivot + dir (a) * (R - 19.f);
-            g.setFont (font (9.f));
+            g.setFont (font (10.5f));
             g.drawText (juce::String (i), (int) t.x - 10, (int) t.y - 6, 20, 12, juce::Justification::centred, false);
         }
     }
     g.setColour (juce::Colour (0xff2a2418));
-    g.setFont (font (8.5f));
+    g.setFont (font (10.f));
     g.drawText ("COMPRESSION", b.withTrimmedTop (3.f).withHeight (12.f), juce::Justification::centred, false);
     g.drawText ("dB", b.withTrimmedLeft (6.f).withTrimmedTop (b.getHeight() - 15.f), juce::Justification::centredLeft, false);
 
@@ -383,7 +349,7 @@ void LedLamp::paint (juce::Graphics& g)
     g.setColour (look::print.withAlpha (0.6f));
     g.drawEllipse (led, 1.f);
     g.setColour (look::print.withAlpha (0.9f));
-    g.setFont (font (9.f));
+    g.setFont (font (10.5f));
     g.drawText (text, 0, 22, getWidth(), 12, juce::Justification::centred, false);
 }
 

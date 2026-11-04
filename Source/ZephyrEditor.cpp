@@ -8,16 +8,31 @@ void Plate::paint (juce::Graphics& g)
 {
     drawPlate (g, getLocalBounds().toFloat());
     g.setColour (look::print.withAlpha (0.95f));
-    g.setFont (font (11.f));
+    g.setFont (font (13.f));
     g.drawText (title, 12, 5, getWidth() - 24, 16, juce::Justification::centredLeft, false);
     g.setColour (look::print.withAlpha (0.35f));
     g.fillRect (12, 24, getWidth() - 24, 1);
+    for (const auto& gr : groups)                                           // cadres de sections : trait fin interrompu par le titre
+    {
+        const auto r = gr.second.toFloat();
+        g.setFont (font (10.f));
+        const int tw = (int) std::ceil (juce::GlyphArrangement::getStringWidth (font (10.f), gr.first)) + 10;
+        const juce::Rectangle<int> gap ((int) r.getX() + 10, (int) r.getY() - 7, tw, 14);
+        {
+            juce::Graphics::ScopedSaveState ss (g);
+            g.excludeClipRegion (gap);
+            g.setColour (look::print.withAlpha (0.28f));
+            g.drawRoundedRectangle (r, 6.f, 1.f);
+        }
+        g.setColour (look::print.withAlpha (0.7f));
+        g.drawText (gr.first, gap, juce::Justification::centred, false);
+    }
 }
 
 void Plate::paintOverChildren (juce::Graphics& g)
 {
     g.setColour (look::print.withAlpha (0.85f));
-    g.setFont (font (9.f));
+    g.setFont (font (11.f));
     for (const auto& l : labels) g.drawText (l.first, l.second, juce::Justification::centred, false);
     drawSpecks (g, getLocalBounds());
 }
@@ -47,7 +62,7 @@ void LedBar::paint (juce::Graphics& g)
     if (capH > 0.f)
     {
         g.setColour (look::print.withAlpha (0.85f));
-        g.setFont (font (8.5f));
+        g.setFont (font (10.f));
         g.drawText (caption, b.withTrimmedTop (b.getHeight() - capH).expanded (6.f, 0.f), juce::Justification::centred, false);
     }
 }
@@ -60,7 +75,7 @@ void Lcd::paint (juce::Graphics& g)
     g.setColour (juce::Colour (0xff6a6a70).withAlpha (0.7f));
     g.drawRoundedRectangle (b, 3.f, 1.f);
     g.setColour (look::print.withAlpha (0.7f));
-    g.setFont (font (8.f));
+    g.setFont (font (9.5f));
     g.drawText (label, b.withTrimmedTop (2.f).withHeight (10.f), juce::Justification::centred, false);
     g.setColour (juce::Colour (0xffffa63a));
     g.setFont (juce::Font (juce::FontOptions (large ? 22.f : 14.f, juce::Font::bold)));
@@ -79,7 +94,7 @@ void PipeView::paint (juce::Graphics& g)
     auto yAt = [&] (float t) { return bot + (top - bot) * t; };
     const bool harmonic = proc.apvts.getRawParameterValue ("lock")->load() < 0.5f;
     const float range = proc.apvts.getRawParameterValue ("range")->load();
-    g.setFont (font (9.f));
+    g.setFont (font (10.5f));
     if (harmonic)
     {
         const int maxH = (int) std::floor (2.f + range * 14.f);
@@ -128,15 +143,15 @@ ZephyrContent::ZephyrContent (ZephyrProcessor& p) : proc (p), pipeView (p)
     setLookAndFeel (&laf);
     setSize (designW, designH);
     buildPanelTex();
-    for (auto* pl : { &pipePlate, &resPlate, &spacePlate, &presPlate, &perfPlate, &fmPlate, &dlPlate }) addAndMakeVisible (pl);
+    for (auto* pl : { &pipePlate, &resPlate, &spacePlate, &modPlate, &learnPlate, &perfPlate, &fmPlate, &dlPlate }) addAndMakeVisible (pl);
 
     // ---- en-tete
     for (auto* b : { &prevBtn, &nextBtn, &saveBtn }) addAndMakeVisible (*b);
     addAndMakeVisible (nameBtn);
-    prevBtn.setBounds (designW - 400, 40, 30, 28);
-    nameBtn.setBounds (designW - 364, 40, 220, 28);
-    nextBtn.setBounds (designW - 140, 40, 30, 28);
-    saveBtn.setBounds (designW - 104, 40, 70, 28);
+    prevBtn.setBounds (designW - 400, 24, 30, 30);
+    nameBtn.setBounds (designW - 364, 24, 220, 30);
+    nextBtn.setBounds (designW - 140, 24, 30, 30);
+    saveBtn.setBounds (designW - 104, 24, 70, 30);
     prevBtn.onClick = [this] { stepPreset (-1); };
     nextBtn.onClick = [this] { stepPreset (1); };
     nameBtn.onClick = [this] { presetMenu(); };
@@ -144,22 +159,25 @@ ZephyrContent::ZephyrContent (ZephyrProcessor& p) : proc (p), pipeView (p)
     nameBtn.setButtonText (proc.presetName);
 
     // ---- LE TUYAU
-    pipePlate.setBounds (10, 118, 220, 330);
+    pipePlate.setBounds (10, 84, 220, 330);
     pipePlate.addAndMakeVisible (pipeView);
     pipeView.setBounds (10, 32, 200, 288);
 
     // ---- RESONATEUR
-    resPlate.setBounds (240, 118, 700, 330);
+    resPlate.setBounds (240, 84, 700, 330);
     {
-        selector (resPlate, p_mode)->setBounds (14, 34, 130, 40);
-        selector (resPlate, p_lock)->setBounds (156, 34, 170, 40);
-        auto* sc = combo (resPlate, p_scale); sc->setBounds (340, 44, 190, 26);
-        auto* rt = combo (resPlate, p_root);  rt->setBounds (544, 44, 70, 26);
-        resPlate.labels.push_back ({ "RESONATOR", { 14, 74, 130, 11 } });
-        resPlate.labels.push_back ({ "LOCK TO", { 156, 74, 170, 11 } });
-        resPlate.labels.push_back ({ "SCALE", { 340, 33, 190, 11 } });
-        resPlate.labels.push_back ({ "ROOT", { 544, 33, 70, 11 } });
-        int x = 12; const int y1 = 96, kw = 96, kh = 110;
+        combo (resPlate, p_mode)->setBounds (14, 44, 170, 28);
+        selector (resPlate, p_lock)->setBounds (200, 34, 170, 40);
+        auto* sc = combo (resPlate, p_scale); sc->setBounds (386, 44, 190, 26);
+        auto* rt = combo (resPlate, p_root);  rt->setBounds (590, 44, 70, 26);
+        resPlate.addAndMakeVisible (bodyHelp);
+        bodyHelp.setBounds (250, 3, 440, 18); bodyHelp.setJustificationType (juce::Justification::centredRight);
+        bodyHelp.setFont (font (11.5f)); bodyHelp.setColour (juce::Label::textColourId, look::print.withAlpha (0.75f)); bodyHelp.setInterceptsMouseClicks (false, false);
+        resPlate.labels.push_back ({ "BODY", { 14, 30, 170, 13 } });
+        resPlate.labels.push_back ({ "LOCK TO", { 200, 74, 170, 11 } });
+        resPlate.labels.push_back ({ "SCALE", { 386, 30, 190, 13 } });
+        resPlate.labels.push_back ({ "ROOT", { 590, 30, 70, 13 } });
+        int x = 12; const int y1 = 100, kw = 96, kh = 108;
         knob (resPlate, p_fb, "FEEDBACK", "0", "10")->setBounds (x, y1, kw, kh); x += kw;
         knob (resPlate, p_wind, "WIND", "0", "10")->setBounds (x, y1, kw, kh); x += kw;
         knob (resPlate, p_range, "RANGE", "0", "10")->setBounds (x, y1, kw, kh); x += kw;
@@ -167,18 +185,23 @@ ZephyrContent::ZephyrContent (ZephyrProcessor& p) : proc (p), pipeView (p)
         knob (resPlate, p_stick, "STICK", "0", "10")->setBounds (x, y1, kw, kh); x += kw;
         knob (resPlate, p_snap, "SNAP", "SWEEP", "STEP")->setBounds (x, y1, kw, kh); x += kw;
         knob (resPlate, p_glide, "GLIDE", "5", "800")->setBounds (x, y1, kw, kh);
-        x = 12; const int y2 = 212, kw2 = 96;
+        x = 12; const int y2 = 218, kw2 = 76;
         knob (resPlate, p_bright, "BRIGHT", "DARK", "OPEN")->setBounds (x, y2, kw2, kh); x += kw2;
         knob (resPlate, p_drive, "DRIVE", "0", "10")->setBounds (x, y2, kw2, kh); x += kw2;
         knob (resPlate, p_breath, "BREATH", "0", "10")->setBounds (x, y2, kw2, kh); x += kw2;
         knob (resPlate, p_atk, "ATTACK", "5", "4s")->setBounds (x, y2, kw2, kh); x += kw2;
+        knob (resPlate, p_dec, "DECAY", "20", "8s")->setBounds (x, y2, kw2, kh); x += kw2;
+        knob (resPlate, p_sus, "SUSTAIN", "0", "10")->setBounds (x, y2, kw2, kh); x += kw2;
         knob (resPlate, p_rel, "RELEASE", "50", "8s")->setBounds (x, y2, kw2, kh); x += kw2;
         knob (resPlate, p_detune, "DETUNE", "0", "30")->setBounds (x, y2, kw2, kh); x += kw2;
         knob (resPlate, p_spread, "SPREAD", "MONO", "WIDE")->setBounds (x, y2, kw2, kh);
+        resPlate.groups = { { "LOOP", { 8, 92, 380, 122 } }, { "PITCH", { 392, 92, 296, 122 } },
+                            { "TONE", { 8, 222, 232, 100 } }, { "ENVELOPE", { 244, 222, 296, 100 } },
+                            { "VOICES", { 544, 222, 144, 100 } } };
     }
 
     // ---- FM
-    fmPlate.setBounds (10, 458, 700, 240);
+    fmPlate.setBounds (10, 424, 700, 240);
     {
         selector (fmPlate, p_fmType)->setBounds (14, 34, 520, 40);
         fmPlate.labels.push_back ({ "SOUND", { 14, 74, 520, 11 } });
@@ -187,13 +210,13 @@ ZephyrContent::ZephyrContent (ZephyrProcessor& p) : proc (p), pipeView (p)
         knob (fmPlate, p_fmChar, "CHARACTER", "SOFT", "WILD")->setBounds (x, y, kw, kh); x += kw;
         knob (fmPlate, p_fmDecay, "DECAY", "0.05", "SUSTAIN")->setBounds (x, y, kw, kh); x += kw;
         knob (fmPlate, p_fmRoute, "ROUTE", "PIPE", "BESIDE", 0.5)->setBounds (x, y, kw, kh);
-        fmPlate.labels.push_back ({ "ROUTE : left = FM excites the pipe,", { 470, 110, 220, 24 } });
-        fmPlate.labels.push_back ({ "centre = both, right = FM plays beside it.", { 470, 134, 224, 24 } });
-        fmPlate.labels.push_back ({ "FM LEVEL is also a pressure target.", { 470, 170, 220, 24 } });
+        fmPlate.labels.push_back ({ "ROUTE : left = FM excites the pipe,", { 462, 110, 232, 24 } });
+        fmPlate.labels.push_back ({ "centre = both, right = beside it.", { 462, 134, 232, 24 } });
+        fmPlate.labels.push_back ({ "FM LEVEL can also be modulated.", { 462, 170, 232, 24 } });
     }
 
     // ---- DELAY
-    dlPlate.setBounds (720, 458, 670, 240);
+    dlPlate.setBounds (720, 424, 670, 240);
     {
         selector (dlPlate, p_dlMode)->setBounds (14, 34, 300, 40);
         selector (dlPlate, p_dlRoute)->setBounds (330, 34, 326, 40);
@@ -210,7 +233,7 @@ ZephyrContent::ZephyrContent (ZephyrProcessor& p) : proc (p), pipeView (p)
     }
 
     // ---- ESPACE + SORTIE
-    spacePlate.setBounds (950, 118, 440, 330);
+    spacePlate.setBounds (950, 84, 440, 330);
     {
         const int kw = 96, y = 34, kh = 120;
         knob (spacePlate, p_rvSize, "SIZE", "SMALL", "HUGE")->setBounds (12, y, kw, kh);
@@ -226,46 +249,85 @@ ZephyrContent::ZephyrContent (ZephyrProcessor& p) : proc (p), pipeView (p)
         spacePlate.labels.push_back ({ "SAFE : OUTPUT IS ALWAYS LIMITED BELOW 0 dBFS", { 14, 240, 372, 12 } });
     }
 
-    // ---- AFTERTOUCH
-    presPlate.setBounds (10, 708, 700, 322);
+    // ---- MATRICE DE MODULATION
+    modPlate.setBounds (10, 84, 700, 350);
     {
-        static const P tgt[3] { p_p1t, p_p2t, p_p3t }, amt[3] { p_p1a, p_p2a, p_p3a };
-        for (int i = 0; i < 3; ++i)
+        static const P src[6] { p_m1s, p_m2s, p_m3s, p_m4s, p_m5s, p_m6s }, dst[6] { p_m1d, p_m2d, p_m3d, p_m4d, p_m5d, p_m6d }, amt[6] { p_m1a, p_m2a, p_m3a, p_m4a, p_m5a, p_m6a };
+        for (int k = 0; k < 6; ++k)
         {
-            const int y = 34 + i * 92;
-            presPlate.labels.push_back ({ "PRESSURE " + juce::String (i + 1), { 14, y + 8, 100, 12 } });
-            presPlate.labels.push_back ({ "controls", { 14, y + 24, 100, 11 } });
-            auto* c = combo (presPlate, tgt[i]); c->setBounds (120, y + 22, 190, 28);
-            knob (presPlate, amt[i], "AMOUNT", "-", "+", 0.0)->setBounds (330, y - 2, 110, 92);
+            const int x0 = 12 + (k % 2) * 344, y0 = 34 + (k / 2) * 104;
+            modPlate.labels.push_back ({ juce::String (k + 1), { x0, y0 + 30, 18, 22 } });
+            modPlate.labels.push_back ({ "SOURCE", { x0 + 22, y0 + 2, 200, 13 } });
+            combo (modPlate, src[k])->setBounds (x0 + 22, y0 + 16, 205, 28);
+            modPlate.labels.push_back ({ "CONTROLS", { x0 + 22, y0 + 50, 205, 13 } });
+            combo (modPlate, dst[k])->setBounds (x0 + 22, y0 + 64, 205, 28);
+            knob (modPlate, amt[k], "AMOUNT", "-", "+", 0.0)->setBounds (x0 + 234, y0 + 2, 100, 96);
         }
-        knob (presPlate, p_pcurve, "CURVE", "SOFT", "HARD", 1.0)->setBounds (560, 40, 110, 130);
-        presPlate.labels.push_back ({ "Press harder = more of what you choose.", { 460, 190, 230, 24 } });
-        presPlate.labels.push_back ({ "Each key has its own pressure.", { 460, 214, 230, 24 } });
     }
 
-    // ---- PERFORMANCE
-    perfPlate.setBounds (720, 708, 670, 322);
+    // ---- SOURCES MIDI
+    learnPlate.setBounds (720, 84, 670, 350);
     {
-        toggle (perfPlate, p_mpe, "MPE MODE")->setBounds (14, 36, 130, 26);
-        toggle (perfPlate, p_hold, "HOLD  (DRONE)")->setBounds (14, 70, 130, 26);
-        knob (perfPlate, p_bend, "BEND RANGE", "1", "48")->setBounds (14, 108, 110, 130);
+        for (int i = 0; i < 2; ++i)
+        {
+            const int y = 40 + i * 62;
+            learnBtn[i].setButtonText (i == 0 ? "LEARN A" : "LEARN B");
+            learnPlate.addAndMakeVisible (learnBtn[i]);
+            learnBtn[i].setBounds (14, y, 150, 44);
+            learnBtn[i].onClick = [this, i] { proc.learnArm.store (proc.learnArm.load() == i + 1 ? 0 : i + 1); };
+            lcdLearn[i] = new Lcd (i == 0 ? "SOURCE LEARN A" : "SOURCE LEARN B"); owned.emplace_back (lcdLearn[i]); learnPlate.addAndMakeVisible (lcdLearn[i]);
+            lcdLearn[i]->setBounds (174, y - 2, 140, 48);
+        }
+        learnPlate.labels.push_back ({ "Click LEARN, then move any knob or", { 14, 168, 306, 14 } });
+        learnPlate.labels.push_back ({ "slider on your keyboard : it becomes", { 14, 184, 306, 14 } });
+        learnPlate.labels.push_back ({ "source LEARN A / B in the matrix.", { 14, 200, 306, 14 } });
+        learnPlate.labels.push_back ({ "READY-MADE SOURCES", { 14, 236, 306, 14 } });
+        learnPlate.labels.push_back ({ "Mod wheel CC1  -  Expression CC11", { 14, 254, 306, 14 } });
+        learnPlate.labels.push_back ({ "Macros 1-8 = CC16-23 (Hydrasynth)", { 14, 270, 306, 14 } });
+        learnPlate.labels.push_back ({ "Polyphonic / channel aftertouch, velocity", { 14, 286, 306, 14 } });
+        knob (learnPlate, p_pcurve, "AFTERTOUCH CURVE", "SOFT", "HARD", 1.0)->setBounds (360, 40, 150, 140);
+        knob (learnPlate, p_bend, "BEND RANGE", "1", "48")->setBounds (520, 40, 130, 140);
+        toggle (learnPlate, p_mpe, "MPE MODE")->setBounds (380, 210, 150, 28);
+        toggle (learnPlate, p_hold, "HOLD  (DRONE)")->setBounds (380, 252, 150, 28);
+        learnPlate.labels.push_back ({ "HOLD keeps notes sounding until you switch it off", { 340, 296, 316, 14 } });
+    }
+
+    // ---- ACTIVITE
+    perfPlate.setBounds (10, 444, 1380, 236);
+    {
         perfPlate.addAndMakeVisible (midiLamp);
-        midiLamp.setBounds (36, 252, 70, 34); midiLamp.set (false);
+        midiLamp.setBounds (24, 44, 80, 40); midiLamp.set (false);
         lcdPress = new Lcd ("LAST PRESSURE"); owned.emplace_back (lcdPress); perfPlate.addAndMakeVisible (lcdPress);
-        lcdPress->setBounds (14, 286, 130, 30);
+        lcdPress->setBounds (14, 110, 150, 50);
+        perfPlate.labels.push_back ({ "Shows the last pressure received", { 6, 168, 176, 28 } });
         for (int i = 0; i < kVoices; ++i)
         {
             voiceBar[i] = new LedBar (0.f, 1.f, juce::String (i + 1)); owned.emplace_back (voiceBar[i]); perfPlate.addAndMakeVisible (voiceBar[i]);
-            voiceBar[i]->setBounds (190 + i * 52, 36, 36, 262);
+            voiceBar[i]->setBounds (230 + i * 100, 34, 56, 166);
         }
         pressBar = new LedBar (0.f, 1.f, "PRESS"); owned.emplace_back (pressBar); perfPlate.addAndMakeVisible (pressBar);
         pressBar->levelColours = false;
-        pressBar->setBounds (610, 36, 40, 262);
-        perfPlate.labels.push_back ({ "VOICE ACTIVITY", { 190, 300, 416, 12 } });
+        pressBar->setBounds (1180, 34, 64, 166);
+        perfPlate.labels.push_back ({ "VOICE ACTIVITY", { 230, 206, 800, 14 } });
     }
+
+    // ---- onglets
+    for (auto* t : { &tabSound, &tabMod }) { addAndMakeVisible (*t); t->setClickingTogglesState (true); t->setRadioGroupId (77); }
+    tabSound.setBounds (470, 24, 210, 30); tabMod.setBounds (690, 24, 210, 30);
+    tabSound.onClick = [this] { showPage (0); };
+    tabMod.onClick = [this] { showPage (1); };
+    showPage (0);
 
     nameBtn.setButtonText (proc.presetName);
     startTimerHz (30);
+}
+
+void ZephyrContent::showPage (int p)
+{
+    page = p;
+    tabSound.setToggleState (p == 0, juce::dontSendNotification); tabMod.setToggleState (p == 1, juce::dontSendNotification);
+    for (auto* pl : { &pipePlate, &resPlate, &spacePlate, &fmPlate, &dlPlate }) pl->setVisible (p == 0);
+    for (auto* pl : { &modPlate, &learnPlate, &perfPlate }) pl->setVisible (p == 1);
 }
 
 ZephyrContent::~ZephyrContent() { stopTimer(); setLookAndFeel (nullptr); }
@@ -319,47 +381,30 @@ void ZephyrContent::buildPanelTex()
     {
         juce::Image::BitmapData bd (panelTex, juce::Image::BitmapData::writeOnly);
         for (int y = 0; y < H; ++y)
-        {
-            const int streak = rr.nextInt (3);
             for (int x = 0; x < W; ++x)
             {
-                const int v = 14 + rr.nextInt (6) + streak;
+                const int v = 19 + rr.nextInt (2);
                 bd.setPixelColour (x, y, juce::Colour::fromRGB ((juce::uint8) v, (juce::uint8) v, (juce::uint8) (v + 1)));
             }
-        }
     }
     juce::Graphics g (panelTex);
-    g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.05f), 0.f, 0.f, juce::Colours::transparentWhite, 0.f, (float) H * 0.5f, false));
-    g.fillRect (0, 0, W, H);
-    for (int i = 0; i < 9; ++i)
-    {
-        g.setColour (juce::Colours::white.withAlpha (0.018f));
-        g.fillEllipse (rr.nextFloat() * (float) W, rr.nextFloat() * (float) H, 40.f + rr.nextFloat() * 60.f, 30.f + rr.nextFloat() * 40.f);
-    }
-    for (int i = 0; i < 320; ++i)
-    {
-        const float x = rr.nextFloat() * (float) W, y = rr.nextFloat() * (float) H;
-        const float a = (rr.nextFloat() - 0.5f) * (rr.nextInt (4) == 0 ? 3.1f : 0.7f), len = 12.f + rr.nextFloat() * 130.f;
-        g.setColour (juce::Colour::fromRGBA (205, 205, 210, (juce::uint8) (8 + rr.nextInt (28))));
-        g.drawLine (x, y, x + len * std::cos (a), y + len * std::sin (a), 0.5f + rr.nextFloat() * 0.7f);
-    }
-    g.setColour (juce::Colour (0xff5a5b60));
-    g.drawRect (0, 0, W, H, 5);
-    g.setColour (juce::Colour (0xff1b1b1d));
-    g.drawRect (5, 5, W - 10, H - 10, 1);
+    g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.035f), 0.f, 0.f, juce::Colours::transparentWhite, 0.f, 90.f, false));
+    g.fillRect (0, 0, W, 90);
+    g.setColour (juce::Colour (0xff3a3b3f));
+    g.drawRect (0, 0, W, H, 2);
+    g.setColour (look::print.withAlpha (0.12f));
+    g.fillRect (12, 70, W - 24, 1);
 
     g.setColour (look::print.withAlpha (0.93f));
-    g.setFont (font (50.f));
-    g.drawText ("ZEPHYR", 30, 6, 340, 58, juce::Justification::centredLeft, false);
+    g.setFont (font (40.f));
+    g.drawText ("ZEPHYR", 26, 6, 300, 46, juce::Justification::centredLeft, false);
     g.setColour (juce::Colour (0xffc8281c));
-    g.fillRect (32, 66, 180, 4);
+    g.fillRect (28, 54, 90, 3);
     g.setColour (look::print.withAlpha (0.85f));
     g.setFont (font (10.5f));
-    g.drawText ("FEEDBACK SYNTH  -  LARSEN / PIPES / SELF-OSCILLATION", 32, 76, 420, 14, juce::Justification::centredLeft, false);
-    g.setFont (font (9.f, false));
-    g.drawText ("FOUDRE AUDIO  -  LET IT HOWL. LET IT BLOOM.", 32, 91, 360, 12, juce::Justification::centredLeft, false);
+    g.drawText ("FEEDBACK SYNTH   -   FOUDRE AUDIO", 28, 56, 360, 14, juce::Justification::centredLeft, false);
     g.setFont (font (9.5f));
-    g.drawText ("PRESET", W - 400, 24, 80, 13, juce::Justification::centredLeft, false);
+    g.drawText ("PRESET", W - 400, 8, 80, 13, juce::Justification::centredLeft, false);
 
     const juce::Point<float> screws[] = { { 16.f, 16.f }, { (float) W - 16.f, 16.f }, { 16.f, (float) H - 16.f }, { (float) W - 16.f, (float) H - 16.f } };
     for (auto p : screws)
@@ -434,44 +479,7 @@ void ZephyrContent::drawTube (juce::Graphics& g, juce::Rectangle<float> r, float
 }
 
 
-void ZephyrContent::paint (juce::Graphics& g)
-{
-    g.drawImageAt (panelTex, 0, 0);
-    const juce::Rectangle<float> win (440.f, 6.f, 400.f, 98.f);
-    g.setColour (juce::Colour (0xff040404));
-    g.fillRoundedRectangle (win, 6.f);
-    g.setColour (juce::Colour (0xff8d8d92).withAlpha (0.8f));
-    g.drawRoundedRectangle (win, 6.f, 2.f);
-    g.setColour (juce::Colours::black.withAlpha (0.5f));
-    g.drawRoundedRectangle (win.reduced (3.f), 5.f, 2.f);
-
-    const float h = heatShown;
-    struct T { float x, w, hgt, thr; };
-    const T tubes[] = { { 490.f, 34.f, 70.f, 0.00f }, { 570.f, 34.f, 70.f, 0.12f }, { 655.f, 46.f, 88.f, 0.25f }, { 745.f, 46.f, 88.f, 0.40f } };
-    {
-        juce::Graphics::ScopedSaveState ss (g);
-        g.reduceClipRegion (win.reduced (3.f).toNearestInt());
-        for (const auto& t : tubes)
-            drawTube (g, { t.x, 100.f - t.hgt, t.w, t.hgt }, juce::jlimit (0.f, 1.f, (h - t.thr) / (1.f - t.thr)), arcShown);
-        if (arcShown > 0.35f)
-            drawBolt (g, { 510.f + rnd.nextFloat() * 40.f, 22.f }, { 800.f - rnd.nextFloat() * 40.f, 26.f });
-    }
-    const float lamp = juce::jlimit (0.f, 1.f, 0.30f + 0.70f * h) * (arcShown > 0.3f ? 1.f : 0.92f + 0.08f * rnd.nextFloat());
-    const juce::Point<float> c (385.f, 54.f);
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xffff2a1a).withAlpha (0.55f * lamp), c.x, c.y,
-                                             juce::Colour (0xffff2a1a).withAlpha (0.f), c.x + 40.f, c.y, true));
-    g.fillEllipse (c.x - 40.f, c.y - 40.f, 80.f, 80.f);
-    g.setColour (juce::Colour (0xff9a9aa0));
-    g.fillEllipse (c.x - 18.f, c.y - 18.f, 36.f, 36.f);
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xffffb09a).interpolatedWith (juce::Colour (0xffffe9b0), h * lamp), c.x - 4.f, c.y - 6.f,
-                                             juce::Colour (0xff4a0804).interpolatedWith (juce::Colour (0xffd01808), lamp), c.x + 12.f, c.y + 14.f, true));
-    g.fillEllipse (c.x - 14.f, c.y - 14.f, 28.f, 28.f);
-    g.setColour (juce::Colours::white.withAlpha (0.35f));
-    g.fillEllipse (c.x - 8.f, c.y - 10.f, 9.f, 5.f);
-    g.setColour (look::print.withAlpha (0.9f));
-    g.setFont (font (10.f));
-    g.drawText ("HEAT", (int) c.x - 30, (int) c.y + 24, 60, 14, juce::Justification::centred, false);
-}
+void ZephyrContent::paint (juce::Graphics& g) { g.drawImageAt (panelTex, 0, 0); }
 
 // ---------------------------------------------------------------- animation
 void ZephyrContent::timerCallback()
@@ -481,7 +489,6 @@ void ZephyrContent::timerCallback()
     const float heat = juce::jlimit (0.f, 1.f, 0.8f * pk + 0.5f * press);
     heatShown += 0.15f * (heat - heatShown);
     arcShown = juce::jmax (arcShown * 0.82f, pk > 0.85f ? 1.f : 0.f);
-    repaint (0, 0, designW, 110);
     pipeView.repaint();
 
     outBar->set (pk);
@@ -491,6 +498,24 @@ void ZephyrContent::timerCallback()
     lcdPeak->set (pk < 0.001f ? juce::String ("-inf") : juce::String (20.f * std::log10 (pk), 1));
     for (int i = 0; i < kVoices; ++i) voiceBar[i]->set (s.vLvl[i].load());
     const int mc = s.midiCount.load();
+    {
+        const int bd = juce::jlimit (0, 9, juce::roundToInt (proc.apvts.getRawParameterValue ("mode")->load()));
+        if (bd != helpShown)
+        {
+            helpShown = bd;
+            static const char* tips[10] { "Wind picks the harmonic of the pipe", "A resonant filter that rings by itself", "Feedback = bow pressure.  Breath = bow speed",
+                                         "Feedback = blowing pressure.  Breath = air", "Focus = pick position.  Feedback = sustain", "Wind morphs bar > bell > plate > bowl",
+                                         "A mic and a speaker in a room : the howl wanders", "Wind morphs the vowel  A E I O U",
+                                         "Filter ladder : warm, dark, asymmetric.  Bright = tone", "Multimode filter : Bright sweeps LP > BP > HP" };
+            bodyHelp.setText (tips[bd], juce::dontSendNotification);
+        }
+    }
+    for (int i = 0; i < 2; ++i)
+    {
+        const int cc = proc.learnCC[i].load(), arm = proc.learnArm.load();
+        lcdLearn[i]->set (arm == i + 1 ? juce::String ("MOVE A KNOB...") : (cc < 0 ? juce::String ("not set") : "CC " + juce::String (cc)));
+        learnBtn[i].setToggleState (arm == i + 1, juce::dontSendNotification);
+    }
     if (mc != lastMidi) { lastMidi = mc; midiFlash = 6; }
     midiLamp.set (midiFlash > 0);
     if (midiFlash > 0) --midiFlash;
@@ -589,9 +614,9 @@ ZephyrEditor::ZephyrEditor (ZephyrProcessor& p) : AudioProcessorEditor (&p), con
     float s = 1.f;                                                  // taille initiale : tient dans l'ecran
     if (auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
         s = juce::jmin (1.f, (float) (d->userArea.getHeight() - 90) / (float) dh, (float) (d->userArea.getWidth() - 20) / (float) dw);
-    s = juce::jmax (0.5f, s);
+    s = juce::jmax (0.75f, s);
     constrainer.setFixedAspectRatio ((double) dw / (double) dh);
-    constrainer.setSizeLimits (dw / 2, dh / 2, dw * 3 / 2, dh * 3 / 2);
+    constrainer.setSizeLimits (dw * 7 / 10, dh * 7 / 10, dw * 3 / 2, dh * 3 / 2);
     setConstrainer (&constrainer);
     setResizable (true, true);
     setSize (juce::roundToInt ((float) dw * s), juce::roundToInt ((float) dh * s));

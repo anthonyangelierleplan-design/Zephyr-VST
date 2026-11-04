@@ -11,6 +11,7 @@ public:
     void paintOverChildren (juce::Graphics&) override;
     juce::String title;
     std::vector<std::pair<juce::String, juce::Rectangle<int>>> labels;      // serigraphies libres
+    std::vector<std::pair<juce::String, juce::Rectangle<int>>> groups;      // detourages de sections (titre + cadre)
 };
 
 class LedBar : public juce::Component
@@ -50,7 +51,8 @@ public:
     explicit ZephyrContent (ZephyrProcessor&);
     ~ZephyrContent() override;
     void paint (juce::Graphics&) override;
-    static constexpr int designW = 1400, designH = 1040;
+    void showPage (int);
+    static constexpr int designW = 1400, designH = 690;
 private:
     void timerCallback() override;
     void buildPanelTex();
@@ -75,7 +77,7 @@ private:
     int lastMidi = 0, midiFlash = 0;
 
     Plate pipePlate { "THE PIPE" }, resPlate { "RESONATOR  -  FEEDBACK LOOP" }, spacePlate { "SPACE  &  OUTPUT" },
-          presPlate { "AFTERTOUCH  -  WHAT PRESSURE DOES" }, perfPlate { "PERFORMANCE" },
+          modPlate { "MODULATION MATRIX  -  WHO CONTROLS WHAT" }, learnPlate { "MIDI SOURCES  -  HYDRASYNTH &  CO" }, perfPlate { "PERFORMANCE" },
           fmPlate { "FM SYNTH  -  WHAT EXCITES THE PIPE" }, dlPlate { "DELAY  -  SPRING / PSYCHO  &  FX ROUTING" };
     PipeView pipeView;
 
@@ -90,6 +92,8 @@ private:
     LedBar* outBar = nullptr; LedBar* voiceBar[eo::kVoices] {}; LedBar* pressBar = nullptr;
     Lcd *lcdPress = nullptr, *lcdVoices = nullptr, *lcdPeak = nullptr;
     LedLamp midiLamp { "MIDI" };
+    juce::TextButton tabSound { "SOUND" }, tabMod { "MODULATION" }, learnBtn[2];
+    Lcd* lcdLearn[2] {}; int page = 0; juce::Label bodyHelp; int helpShown = -1;
     juce::TextButton prevBtn { "<" }, nextBtn { ">" }, nameBtn, saveBtn { "SAVE" };
     std::unique_ptr<OrageDialog> dialog;
 

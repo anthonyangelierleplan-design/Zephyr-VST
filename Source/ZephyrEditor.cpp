@@ -128,7 +128,7 @@ ZephyrContent::ZephyrContent (ZephyrProcessor& p) : proc (p), pipeView (p)
     setLookAndFeel (&laf);
     setSize (designW, designH);
     buildPanelTex();
-    for (auto* pl : { &pipePlate, &resPlate, &spacePlate, &presPlate, &perfPlate }) addAndMakeVisible (pl);
+    for (auto* pl : { &pipePlate, &resPlate, &spacePlate, &presPlate, &perfPlate, &fmPlate, &dlPlate }) addAndMakeVisible (pl);
 
     // ---- en-tete
     for (auto* b : { &prevBtn, &nextBtn, &saveBtn }) addAndMakeVisible (*b);
@@ -167,15 +167,46 @@ ZephyrContent::ZephyrContent (ZephyrProcessor& p) : proc (p), pipeView (p)
         knob (resPlate, p_stick, "STICK", "0", "10")->setBounds (x, y1, kw, kh); x += kw;
         knob (resPlate, p_snap, "SNAP", "SWEEP", "STEP")->setBounds (x, y1, kw, kh); x += kw;
         knob (resPlate, p_glide, "GLIDE", "5", "800")->setBounds (x, y1, kw, kh);
-        x = 12; const int y2 = 212, kw2 = 84;
+        x = 12; const int y2 = 212, kw2 = 96;
         knob (resPlate, p_bright, "BRIGHT", "DARK", "OPEN")->setBounds (x, y2, kw2, kh); x += kw2;
         knob (resPlate, p_drive, "DRIVE", "0", "10")->setBounds (x, y2, kw2, kh); x += kw2;
         knob (resPlate, p_breath, "BREATH", "0", "10")->setBounds (x, y2, kw2, kh); x += kw2;
-        knob (resPlate, p_ext, "AUDIO IN", "0", "10")->setBounds (x, y2, kw2, kh); x += kw2;
         knob (resPlate, p_atk, "ATTACK", "5", "4s")->setBounds (x, y2, kw2, kh); x += kw2;
         knob (resPlate, p_rel, "RELEASE", "50", "8s")->setBounds (x, y2, kw2, kh); x += kw2;
         knob (resPlate, p_detune, "DETUNE", "0", "30")->setBounds (x, y2, kw2, kh); x += kw2;
         knob (resPlate, p_spread, "SPREAD", "MONO", "WIDE")->setBounds (x, y2, kw2, kh);
+    }
+
+    // ---- FM
+    fmPlate.setBounds (10, 458, 700, 240);
+    {
+        selector (fmPlate, p_fmType)->setBounds (14, 34, 520, 40);
+        fmPlate.labels.push_back ({ "SOUND", { 14, 74, 520, 11 } });
+        int x = 12; const int y = 100, kw = 110, kh = 130;
+        knob (fmPlate, p_fm, "FM LEVEL", "0", "10")->setBounds (x, y, kw, kh); x += kw;
+        knob (fmPlate, p_fmChar, "CHARACTER", "SOFT", "WILD")->setBounds (x, y, kw, kh); x += kw;
+        knob (fmPlate, p_fmDecay, "DECAY", "0.05", "SUSTAIN")->setBounds (x, y, kw, kh); x += kw;
+        knob (fmPlate, p_fmRoute, "ROUTE", "PIPE", "BESIDE", 0.5)->setBounds (x, y, kw, kh);
+        fmPlate.labels.push_back ({ "ROUTE : left = FM excites the pipe,", { 470, 110, 220, 24 } });
+        fmPlate.labels.push_back ({ "centre = both, right = FM plays beside it.", { 470, 134, 224, 24 } });
+        fmPlate.labels.push_back ({ "FM LEVEL is also a pressure target.", { 470, 170, 220, 24 } });
+    }
+
+    // ---- DELAY
+    dlPlate.setBounds (720, 458, 670, 240);
+    {
+        selector (dlPlate, p_dlMode)->setBounds (14, 34, 300, 40);
+        selector (dlPlate, p_dlRoute)->setBounds (330, 34, 326, 40);
+        dlPlate.labels.push_back ({ "MODE", { 14, 74, 300, 11 } });
+        dlPlate.labels.push_back ({ "ROUTING  (REVERB / DELAY)", { 330, 74, 326, 11 } });
+        int x = 8; const int y = 100, kw = 93, kh = 130;
+        knob (dlPlate, p_dlTime, "TIME", "SHORT", "LONG")->setBounds (x, y, kw, kh); x += kw;
+        knob (dlPlate, p_dlFb, "FEEDBACK", "0", "10")->setBounds (x, y, kw, kh); x += kw;
+        knob (dlPlate, p_dlMod, "WOBBLE", "0", "10")->setBounds (x, y, kw, kh); x += kw;
+        knob (dlPlate, p_dlRate, "RATE", "0.05", "10 Hz")->setBounds (x, y, kw, kh); x += kw;
+        knob (dlPlate, p_dlTone, "TONE", "DARK", "OPEN")->setBounds (x, y, kw, kh); x += kw;
+        knob (dlPlate, p_dlMix, "MIX", "OFF", "10")->setBounds (x, y, kw, kh); x += kw;
+        knob (dlPlate, p_dlLoop, "TO LOOP", "0", "10")->setBounds (x, y, kw, kh);
     }
 
     // ---- ESPACE + SORTIE
@@ -196,7 +227,7 @@ ZephyrContent::ZephyrContent (ZephyrProcessor& p) : proc (p), pipeView (p)
     }
 
     // ---- AFTERTOUCH
-    presPlate.setBounds (10, 458, 700, 322);
+    presPlate.setBounds (10, 708, 700, 322);
     {
         static const P tgt[3] { p_p1t, p_p2t, p_p3t }, amt[3] { p_p1a, p_p2a, p_p3a };
         for (int i = 0; i < 3; ++i)
@@ -213,7 +244,7 @@ ZephyrContent::ZephyrContent (ZephyrProcessor& p) : proc (p), pipeView (p)
     }
 
     // ---- PERFORMANCE
-    perfPlate.setBounds (720, 458, 670, 322);
+    perfPlate.setBounds (720, 708, 670, 322);
     {
         toggle (perfPlate, p_mpe, "MPE MODE")->setBounds (14, 36, 130, 26);
         toggle (perfPlate, p_hold, "HOLD  (DRONE)")->setBounds (14, 70, 130, 26);

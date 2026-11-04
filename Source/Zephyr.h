@@ -31,10 +31,23 @@ namespace eo
     X (rel,     "Release",             50.f, 8000.f, 1800.f,0, 800.f)  \
     X (detune,  "Detune",               0.f,  30.f,   6.f,  0, 0.f)    \
     X (spread,  "Spread",               0.f,   1.f,   0.6f, 0, 0.f)    \
-    X (ext,     "Ext Input",            0.f,   1.f,   0.f,  0, 0.f)    \
+    X (fm,      "FM Level",             0.f,   1.f,   0.f,  0, 0.f)    \
+    X (fmType,  "FM Sound",             0.f,   5.f,   0.f,  2, 0.f)    \
+    X (fmChar,  "FM Character",            0.f,   1.f,   0.4f, 0, 0.f)    \
+    X (fmRoute, "FM Route",             0.f,   1.f,   0.5f, 0, 0.f)    \
+    X (fmDecay, "FM Decay",             0.05f, 8.f,   0.8f, 0, 0.8f)   \
     X (rvSize,  "Reverb Size",          0.f,   1.f,   0.6f, 0, 0.f)    \
     X (rvDamp,  "Reverb Damp",          0.f,   1.f,   0.4f, 0, 0.f)    \
     X (rvMix,   "Reverb Mix",           0.f,   1.f,   0.3f, 0, 0.f)    \
+    X (dlMode,  "Delay Mode",           0.f,   2.f,   0.f,  2, 0.f)    \
+    X (dlTime,  "Delay Time",           0.f,   1.f,   0.4f, 0, 0.f)    \
+    X (dlFb,    "Delay Feedback",       0.f,   1.f,   0.3f, 0, 0.f)    \
+    X (dlMod,   "Delay Mod",            0.f,   1.f,   0.3f, 0, 0.f)    \
+    X (dlRate,  "Delay Mod Rate",       0.05f, 10.f,  0.8f, 0, 0.8f)   \
+    X (dlTone,  "Delay Tone",           0.f,   1.f,   0.5f, 0, 0.f)    \
+    X (dlMix,   "Delay Mix",            0.f,   1.f,   0.f,  0, 0.f)    \
+    X (dlLoop,  "Delay To Loop",        0.f,   1.f,   0.f,  0, 0.f)    \
+    X (dlRoute, "FX Routing",           0.f,   2.f,   0.f,  2, 0.f)    \
     X (p1t,     "Pressure 1 Target",    0.f,   7.f,   0.f,  2, 0.f)    \
     X (p1a,     "Pressure 1 Amount",   -1.f,   1.f,   0.5f, 0, 0.f)    \
     X (p2t,     "Pressure 2 Target",    0.f,   7.f,   1.f,  2, 0.f)    \
@@ -67,7 +80,7 @@ inline const ParamDef* paramDefs()
 
 constexpr float kPi = 3.14159265358979f;
 constexpr int kVoices = 8;
-constexpr int kTargets = 8;           // FEEDBACK WIND FOCUS BRIGHT DRIVE BREATH PITCH EXT
+constexpr int kTargets = 8;           // FEEDBACK WIND FOCUS BRIGHT DRIVE BREATH PITCH FM
 constexpr float kTapGain = 2.5f;
 
 inline float fastTanh (float x)       // rationnelle, bornee a +-1
@@ -183,6 +196,62 @@ private:
     float baseLen[8] {}, gain[8] {}, lp[8] {}, phase[8] {};
 };
 
+// ---------------------------------------------------------------- delay (normal / ressort / psychedelique)
+class DelayFx
+{
+public:
+    void prepare (float sr)
+    {
+        fs = sr; const int n = (int) (sr * 2.2f);
+        for (int c = 0; c < 2; ++c) { line[c].prepare (n); line[c].clear(); lpS[c] = 0.f; dcX[c] = dcY[c] = 0.f; for (auto& a : ap[c]) a = {}; tS[c] = 0.f; }
+        ph = 0.f; ph2 = 0.f;
+    }
+    void setParams (int m, float time01, float fbv, float mod, float rateHz, float tone)
+    {
+        mode = std::max (0, std::min (2, m));
+        if (mode == 0)      { timeMs = 30.f * std::pow (30.f, time01);   fbG = 0.92f * fbv; }
+        else if (mode == 1) { timeMs = 1.5f * std::pow (14.7f, time01);  fbG = 0.985f * fbv; }
+        else                { timeMs = 120.f * std::pow (11.7f, time01); fbG = 0.92f * fbv; }
+        modAmt = mod; rate = rateHz;
+        const float fc = 500.f * std::pow (28.f, tone);                              // 500 Hz .. 14 kHz
+        lpC = 1.f - std::exp (-2.f * kPi * std::min (fc, 0.45f * fs) / fs);
+        smC = 1.f - std::exp (-1.f / ((mode == 1 ? 0.012f : 0.08f) * fs));
+    }
+    void process (float inL, float inR, float& outL, float& outR)
+    {
+        ph += rate / fs; if (ph > 1.f) ph -= 1.f;
+        ph2 += rate * 0.37f / fs; if (ph2 > 1.f) ph2 -= 1.f;
+        const float in[2] { inL, inR }; float y[2];
+        for (int c = 0; c < 2; ++c)
+        {
+            const float off = (c == 0) ? 0.f : 0.25f;
+            float lfo = std::sin (2.f * kPi * (ph + off));
+            float tgtMs = timeMs * (c == 0 ? 1.f : (mode == 0 ? 1.5f : (mode == 2 ? 1.19f : 1.07f)));
+            float depthMs;
+            if (mode == 0)      depthMs = modAmt * 1.5f;
+            else if (mode == 1) { depthMs = modAmt * 0.45f * tgtMs; lfo = 0.7f * lfo + 0.3f * std::sin (2.f * kPi * (ph2 * 2.7f + off)); }
+            else                { depthMs = modAmt * 0.35f * tgtMs; lfo = 0.65f * lfo + 0.35f * std::sin (2.f * kPi * (ph2 + 0.5f * off)); }
+            tS[c] += (tgtMs - tS[c]) * smC;
+            const float ms = std::max (0.6f, tS[c] + depthMs * lfo);
+            const float d = std::max (2.f, std::min ((float) line[c].mask - 8.f, ms * 0.001f * fs));
+            y[c] = line[c].read (d);
+        }
+        outL = y[0]; outR = y[1];
+        for (int c = 0; c < 2; ++c)
+        {
+            const float src = (mode == 1) ? y[c] : y[1 - c];                           // ressort : boucle propre ; sinon ping-pong
+            lpS[c] += (src - lpS[c]) * lpC; float f = lpS[c];
+            if (mode == 1) for (auto& a : ap[c]) f = a.run (f, 0.62f);                  // dispersion : c'est elle qui fait le "boing"
+            const float hp = f - dcX[c] + 0.995f * dcY[c]; dcX[c] = f; dcY[c] = hp;
+            line[c].write (in[c] + fastTanh (fbG * hp));
+        }
+    }
+private:
+    struct Ap { float x1 = 0.f, y1 = 0.f; float run (float x, float a) { const float y = a * x + x1 - a * y1; x1 = x; y1 = y; return y; } };
+    float fs = 44100.f, timeMs = 100.f, fbG = 0.f, modAmt = 0.f, rate = 1.f, lpC = 0.5f, smC = 0.01f, ph = 0.f, ph2 = 0.f;
+    int mode = 0; DelayLine line[2]; float lpS[2] {}, dcX[2] {}, dcY[2] {}, tS[2] {}; Ap ap[2][6];
+};
+
 // ---------------------------------------------------------------- gammes
 inline const int* scaleMask (int s)         // 12 notes : 1 = dans la gamme (relatif a la tonique)
 {
@@ -195,6 +264,21 @@ inline const int* scaleMask (int s)         // 12 notes : 1 = dans la gamme (rel
         { 1,0,1,0,1,0,1,0,1,0,1,0 },   // tons entiers
         { 1,1,1,1,1,1,1,1,1,1,1,1 } }; // chromatique
     return m[std::max (0, std::min (6, s))];
+}
+
+// ---------------------------------------------------------------- petit synthe FM (2 operateurs) : la matiere qui excite le tuyau
+struct FmSound { float cr, mr, idx, fbk, decS, idxDecS, sweep, sweepT, wob; };
+inline const FmSound& fmSound (int i)
+{
+    static const FmSound t[6] {
+        // porteuse modulante indice retour  dec  decIdx balayage temps wobble
+        { 1.f, 3.5f,   3.0f, 0.0f, 1.0f, 0.5f, 0.0f, 0.01f, 0.f },   // Bell   : rapport inharmonique, brillant puis doux
+        { 1.f, 1.4142f,4.0f, 0.6f, 1.2f, 1.0f, 0.0f, 0.01f, 0.f },   // Metal  : sonnaille, retour dans le modulateur
+        { 1.f, 2.76f,  2.0f, 0.0f, 0.12f,0.6f, 0.15f,0.01f, 0.f },   // Wood   : claque courte
+        { 1.f, 1.0f,   1.5f, 0.0f, 0.8f, 0.5f, 0.6f, 0.05f, 14.f },  // Spring : hauteur qui ondule vers le bas
+        { 1.f, 2.0f,   5.0f, 0.2f, 0.5f, 0.4f, 5.0f, 0.07f, 0.f },   // Laser  : chute rapide de hauteur
+        { 1.f, 5.01f,  0.8f, 0.0f, 2.0f, 2.0f, 0.0f, 0.01f, 0.f } }; // Glass  : fin, long, scintillant
+    return t[std::max (0, std::min (5, i))];
 }
 
 // ---------------------------------------------------------------- moteur
@@ -211,7 +295,8 @@ public:
     {
         fs = sampleRate;
         for (auto& v : voices) { v = Voice(); v.dl.prepare ((int) (fs / 12.f) + 16); }
-        reverb.prepare (fs);
+        reverb.prepare (fs); delay.prepare (fs);
+        for (int i = 0; i < 64; ++i) dlFed[i] = dlFedNext[i] = 0.f;
         for (int c = 0; c < 16; ++c) chanP[c] = 0.f, bendCh[c] = 0.f;
         mw = 0.f; held = false; sustainPedal = false; pkS = 0.f; stamp = 0;
     }
@@ -220,6 +305,7 @@ public:
     {
         for (int i = 0; i < kNumP; ++i) p[i] = v[i];
         reverb.setParams (p[p_rvSize], p[p_rvDamp], p[p_rvMix]);
+        delay.setParams ((int) p[p_dlMode], p[p_dlTime], p[p_dlFb], p[p_dlMod], p[p_dlRate], p[p_dlTone]);
         outLin = std::pow (10.f, p[p_out] / 20.f);
         const bool h = p[p_hold] > 0.5f;
         if (held && ! h) releaseDeferred();
@@ -242,7 +328,7 @@ public:
         if (fresh) { v->dl.clear(); v->bp.reset(); v->lp = 0.f; v->env = 0.f; v->pos = 1.f; v->h = 1.f; v->q = note; v->posSemi = (float) note; v->pressS = 0.f; v->d = 2.f; v->dInit = false; }
         v->active = true; v->keyDown = true; v->deferred = false; v->releasing = false;
         v->note = note; v->ch = ch; v->vel = vel; v->age = ++stamp;
-        v->kick = 0.25f * (0.3f + vel); v->polyP = 0.f;
+        v->kick = 0.25f * (0.3f + vel); v->polyP = 0.f; v->fmT = 0.f; v->fmPhC = v->fmPhM = v->fmFbS = 0.f;
         v->detuneCents = (rng.next()) * p[p_detune];
         v->panPos = rng.next();
         const int scalePc = (int) p[p_root];
@@ -281,7 +367,7 @@ public:
         int done = 0;
         while (done < n)
         {
-            const int m = std::min (256, n - done);
+            const int m = std::min (64, n - done);
             for (int i = 0; i < m; ++i) mix[i] = 0.f;
             float panL[kVoices], panR[kVoices];
             float busL[256], busR[256];
@@ -293,22 +379,45 @@ public:
                 if (! v.active) { vPos[vi].store (0.f); vLvl[vi].store (0.f); continue; }
                 ++act;
                 for (int i = 0; i < m; ++i) mix[i] = 0.f;
-                runVoice (v, vi, mix, m, extL != nullptr ? extL + done : nullptr, extR != nullptr ? extR + done : nullptr);
+                runVoice (v, vi, mix, m, dlFed, nullptr);                          // le retour du delay entre dans la boucle (avec un bloc de 64 echantillons de retard)
                 const float pan = 0.5f + 0.5f * p[p_spread] * v.panPos;
                 panL[vi] = std::cos (pan * 0.5f * kPi); panR[vi] = std::sin (pan * 0.5f * kPi);
                 for (int i = 0; i < m; ++i) { busL[i] += mix[i] * panL[vi]; busR[i] += mix[i] * panR[vi]; }
             }
             activeVoices.store (act);
             const float dg = reverb.dryGain();
+            const int rt = (int) p[p_dlRoute]; const float dm = p[p_dlMix];
             for (int i = 0; i < m; ++i)
             {
-                float wl, wr;
-                reverb.process (busL[i], busR[i], wl, wr);
-                float l = (busL[i] * dg + wl) * outLin, r = (busR[i] * dg + wr) * outLin;
+                const float bl = busL[i], br = busR[i];
+                float wl, wr, dL, dR, oL, oR;
+                if (rt == 0)        // reverb puis delay
+                {
+                    reverb.process (bl, br, wl, wr);
+                    const float xl = bl * dg + wl, xr = br * dg + wr;
+                    delay.process (xl, xr, dL, dR);
+                    oL = xl + dm * dL; oR = xr + dm * dR;
+                }
+                else if (rt == 1)   // delay puis reverb
+                {
+                    delay.process (bl, br, dL, dR);
+                    const float xl = bl + dm * dL, xr = br + dm * dR;
+                    reverb.process (xl, xr, wl, wr);
+                    oL = xl * dg + wl; oR = xr * dg + wr;
+                }
+                else                // en parallele
+                {
+                    reverb.process (bl, br, wl, wr);
+                    delay.process (bl, br, dL, dR);
+                    oL = bl * dg + wl + dm * dL; oR = br * dg + wr + dm * dR;
+                }
+                dlFedNext[i] = fastTanh (0.5f * (dL + dR));
+                float l = oL * outLin, r = oR * outLin;
                 l = std::max (-1.f, std::min (1.f, fastTanh (l))); r = std::max (-1.f, std::min (1.f, fastTanh (r)));   // securite : jamais au-dela de 0 dBFS
                 L[done + i] = l; R[done + i] = r;
                 peak = std::max (peak, std::max (std::fabs (l), std::fabs (r)));
             }
+            for (int i = 0; i < 64; ++i) dlFed[i] = (i < m) ? dlFedNext[i] : 0.f;
             done += m;
         }
         pkS = std::max (peak, pkS * std::pow (0.9f, (float) n / 256.f));
@@ -327,9 +436,12 @@ private:
         Svf bp; DelayLine dl; Rng rng;
         float lpC = 0.5f, lpDelay = 0.f, drv = 1.f, tapNorm = 0.5f; float dStep = 0.f;
         float level = 0.f;
+        float fmT = 0.f, fmPhC = 0.f, fmPhM = 0.f, fmFbS = 0.f, fmGate = 0.f, fmAmt = 0.f, fmF = 440.f;
     };
     Voice voices[kVoices];
     Reverb reverb;
+    DelayFx delay;
+    float dlFed[64] {}, dlFedNext[64] {};
     Rng rng;
     float p[kNumP] {};
     float fs = 44100.f, outLin = 0.4f, chanP[16] {}, bendCh[16] {}, mw = 0.f, pkS = 0.f;
@@ -374,6 +486,7 @@ private:
                 // ---- pression -> sources de modulation
                 const float chp = mpe ? chanP[v.ch & 15] : *std::max_element (chanP, chanP + 16);
                 float pr = std::max (v.polyP, std::max (chp, mw));
+                if (! v.keyDown) pr = v.deferred ? v.polyP : 0.f;                       // une note relachee (ou tenue par HOLD / pedale) ne repart jamais sur la pression d'une AUTRE touche ou d'une molette
                 pr = std::pow (std::max (0.f, std::min (1.f, pr)), p[p_pcurve]);
                 v.pressS += (pr - v.pressS) * (1.f - std::exp (-dt / 0.025f));
                 float m[kTargets] {};
@@ -381,7 +494,7 @@ private:
                 auto cl = [] (float x) { return std::max (0.f, std::min (1.f, x)); };
                 const float fbE = cl (p[p_fb] + m[0]), windE = cl (p[p_wind] + m[1]), focE = cl (p[p_focus] + m[2]);
                 const float briE = cl (p[p_bright] + m[3]), drvE = cl (p[p_drive] + m[4]), brE = cl (p[p_breath] + m[5]);
-                const float pitchMod = 2.f * m[6], extE = cl (p[p_ext] + m[7]);
+                const float pitchMod = 2.f * m[6], fmE = cl (p[p_fm] + m[7]);
                 const float bendSemi = (mpe ? bendCh[v.ch & 15] : bendCh[0]) * p[p_bend];
                 const float semi = (float) v.note + bendSemi + v.detuneCents * 0.01f + pitchMod;
                 const float glideC = 1.f - std::exp (-dt / (std::max (5.f, p[p_glide]) * 0.001f));
@@ -441,8 +554,8 @@ private:
                 v.gain = g;
                 v.drv = 1.f + 7.f * drvE * drvE;
                 v.tapNorm = 0.5f / std::sqrt (v.drv);
-                v.noiseAmp = 0.05f * brE * brE * (0.3f + v.vel);
-                v.extAmp = extE * 0.5f;
+                v.noiseAmp = 0.12f * brE * brE * (0.3f + v.vel);
+                v.extAmp = p[p_dlLoop] * 0.6f; v.fmAmt = fmE; v.fmF = std::max (20.f, std::min (0.4f * fs, fLoop));
                 vPos[vi].store (cl (normPos));
             }
             v.ctl = (v.ctl + 1) % CT;
@@ -456,15 +569,39 @@ private:
             float inj = v.rng.next () * (v.noiseAmp + 1e-6f) + v.kick * v.rng.next();
             v.kick *= 0.9985f;
             if (extL != nullptr) inj += v.extAmp * 0.5f * (extL[i] + (extR != nullptr ? extR[i] : extL[i]));
+            // ---- FM : une part excite la boucle, une part sonne a cote
+            float fmOut = 0.f;
+            if (v.fmAmt > 1e-4f)
+            {
+                const FmSound& T = fmSound ((int) p[p_fmType]);
+                const float fun = p[p_fmChar], dec = p[p_fmDecay];
+                v.fmT += 1.f / fs;
+                const float ampEnv = dec >= 7.9f ? 1.f : std::exp (-v.fmT / std::max (0.02f, dec * T.decS));
+                float idxEnv = std::exp (-v.fmT / std::max (0.02f, std::min (dec, 4.f) * T.idxDecS));
+                if (dec >= 7.9f) idxEnv = 0.25f + 0.75f * idxEnv;
+                const float sw = T.sweep * (0.4f + 1.2f * fun) * std::exp (-v.fmT / T.sweepT) * (T.wob > 0.f ? std::cos (2.f * kPi * T.wob * v.fmT) : 1.f);
+                const float f = std::min (0.45f * fs, v.fmF * T.cr * std::max (0.2f, 1.f + sw));
+                const float idx = T.idx * (0.25f + 2.2f * fun) * idxEnv * std::max (0.2f, std::min (1.f, 1200.f / f));   // moins d'indice dans l'aigu : pas de repliement
+                v.fmPhM += f * T.mr / fs; v.fmPhM -= std::floor (v.fmPhM);
+                const float mod = std::sin (2.f * kPi * v.fmPhM + T.fbk * v.fmFbS); v.fmFbS = mod;
+                v.fmPhC += f / fs; v.fmPhC -= std::floor (v.fmPhC);
+                fmOut = std::sin (2.f * kPi * v.fmPhC + idx * mod) * ampEnv;
+            }
+            if (v.releasing || (! v.keyDown && ! v.deferred)) v.fmGate *= v.relC; else v.fmGate += (1.f - v.fmGate) * 0.02f;
+            fmOut *= v.fmGate;
+            const float route = p[p_fmRoute];
+            inj += fmOut * v.fmAmt * 0.35f * std::min (1.f, 2.f * (1.f - route));
+            out[i] += fmOut * v.fmAmt * 0.2f * std::min (1.f, 2.f * route);
             v.dl.write (inj + v.gain * s);
             // ---- enveloppe
             if (v.releasing || (! v.keyDown && ! v.deferred)) v.env *= v.relC;
             else v.env += (1.f - v.env) * v.atkC;
-            out[i] += yd * v.tapNorm * v.env * kTapGain;
+            const float lv = v.level * 25.f;                                        // sous le seuil d'auto-oscillation (pas de pression) : on remonte le niveau, effet nul des que la note chante
+            out[i] += yd * v.tapNorm * v.env * kTapGain * (1.f + 8.f / (1.f + lv * lv));
             v.level = std::max (v.level * 0.9995f, std::fabs (yd * v.tapNorm * v.env));
         }
         vLvl[vi].store (std::min (1.f, v.level * 3.f));
-        if ((v.releasing || (! v.keyDown && ! v.deferred)) && v.env < 1e-4f) { v.active = false; v.level = 0.f; }
+        if ((v.releasing || (! v.keyDown && ! v.deferred)) && v.env < 1e-4f && v.fmGate < 1e-4f) { v.active = false; v.level = 0.f; }
     }
 };
 } // namespace eo

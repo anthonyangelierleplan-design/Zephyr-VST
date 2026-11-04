@@ -11,7 +11,10 @@ juce::StringArray ZephyrProcessor::choiceNames (int i)
         case p_lock:  return { "HARMONIC", "SCALE" };
         case p_scale: return { "Major", "Minor", "Dorian", "Pentatonic Minor", "Pentatonic Major", "Whole Tone", "Chromatic" };
         case p_root:  return { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
-        default:      return { "FEEDBACK", "WIND", "FOCUS", "BRIGHT", "DRIVE", "BREATH", "PITCH", "EXT INPUT" };   // cibles de la pression
+        case p_fmType:  return { "Bell", "Metal", "Wood", "Spring", "Laser", "Glass" };
+        case p_dlMode:  return { "NORMAL", "SPRING", "PSYCHO" };
+        case p_dlRoute: return { "REVERB > DELAY", "DELAY > REVERB", "PARALLEL" };
+        default:      return { "FEEDBACK", "WIND", "FOCUS", "BRIGHT", "DRIVE", "BREATH", "PITCH", "FM LEVEL" };   // cibles de la pression
     }
 }
 
@@ -24,6 +27,9 @@ juce::String valueText (int i, float v)
         case p_out:      return (v > 0.05f ? "+" : "") + juce::String (v, 1) + " dB";
         case p_glide: case p_atk: case p_rel:
             return v >= 1000.f ? juce::String (v / 1000.f, 2) + " s" : juce::String ((int) std::round (v)) + " ms";
+        case p_fmDecay:  return juce::String (v, 2) + " s";
+        case p_dlRate:   return juce::String (v, 2) + " Hz";
+        case p_fmRoute:  return v < 0.33f ? "into the pipe" : (v > 0.67f ? "beside the pipe" : "both");
         case p_detune:   return juce::String (v, 1) + " cents";
         case p_bend:     return juce::String ((int) std::round (v)) + " semitones";
         case p_pcurve:   return v < 0.95f ? "soft" : (v > 1.05f ? "hard" : "linear");
@@ -59,8 +65,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ZephyrProcessor::makeLayout(
 }
 
 ZephyrProcessor::ZephyrProcessor()
-    : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)
-                                       .withInput ("Sidechain", juce::AudioChannelSet::stereo(), false)),
+    : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "ZEPHYR", makeLayout())
 {
     for (int i = 0; i < kNumP; ++i) raw[i] = apvts.getRawParameterValue (paramDefs()[i].id);
@@ -69,14 +74,13 @@ ZephyrProcessor::ZephyrProcessor()
 bool ZephyrProcessor::isBusesLayoutSupported (const BusesLayout& l) const
 {
     if (l.getMainOutputChannelSet() != juce::AudioChannelSet::stereo()) return false;
-    const auto in = l.getChannelSet (true, 0);
-    return in.isDisabled() || in == juce::AudioChannelSet::stereo();
+    return true;
 }
 
 void ZephyrProcessor::prepareToPlay (double sr, int block)
 {
     synth.prepare ((float) sr);
-    extBuf.setSize (2, juce::jmax (512, block), false, true, false);
+    (void) block;
 }
 
 void ZephyrProcessor::handle (const juce::MidiMessage& m)
@@ -95,16 +99,7 @@ void ZephyrProcessor::processBlock (juce::AudioBuffer<float>& buf, juce::MidiBuf
 {
     juce::ScopedNoDenormals nd;
     const int n = buf.getNumSamples();
-    // entree audio (sidechain) : copiee avant d'ecrire la sortie
     const float *eL = nullptr, *eR = nullptr;
-    auto in = getBusBuffer (buf, true, 0);
-    if (getBus (true, 0) != nullptr && getBus (true, 0)->isEnabled() && in.getNumChannels() >= 1)
-    {
-        if (extBuf.getNumSamples() < n) extBuf.setSize (2, n, false, true, false);
-        extBuf.copyFrom (0, 0, in, 0, 0, n);
-        extBuf.copyFrom (1, 0, in, in.getNumChannels() > 1 ? 1 : 0, 0, n);
-        eL = extBuf.getReadPointer (0); eR = extBuf.getReadPointer (1);
-    }
     for (int i = 0; i < kNumP; ++i) values[i] = raw[i]->load();
     synth.setParams (values);
 
@@ -181,9 +176,28 @@ const std::vector<Factory>& factory()
         { "Drone Bloom", {
             { p_hold, 1 }, { p_fb, .58f }, { p_wind, .3f }, { p_range, .6f }, { p_stick, .7f }, { p_snap, .9f }, { p_glide, 400.f }, { p_drive, .35f },
             { p_p1a, .3f }, { p_p2a, .7f }, { p_atk, 3000.f }, { p_rel, 7000.f }, { p_rvSize, .9f }, { p_rvMix, .5f } } },
-        { "Resonator (Audio In)", {
-            { p_fb, .3f }, { p_ext, .8f }, { p_focus, .5f }, { p_breath, .1f }, { p_bright, .6f }, { p_p1a, .5f }, { p_p2a, .3f },
-            { p_atk, 80.f }, { p_rel, 1200.f }, { p_rvMix, .25f } } },
+        { "Glass Bell Choir", {
+            { p_fm, .6f }, { p_fmType, 0 }, { p_fmChar, .45f }, { p_fmRoute, .35f }, { p_fmDecay, 1.6f }, { p_fb, .36f }, { p_focus, .7f }, { p_breath, .25f },
+            { p_p1a, .55f }, { p_p2a, .6f }, { p_rvSize, .85f }, { p_rvMix, .45f }, { p_atk, 120.f }, { p_rel, 3000.f } } },
+        { "Spring Boing", {
+            { p_fm, .7f }, { p_fmType, 3 }, { p_fmChar, .6f }, { p_fmRoute, .5f }, { p_fmDecay, .5f }, { p_fb, .3f }, { p_breath, .2f },
+            { p_dlMode, 1 }, { p_dlTime, .35f }, { p_dlFb, .75f }, { p_dlMod, .55f }, { p_dlRate, 5.f }, { p_dlTone, .6f }, { p_dlMix, .5f },
+            { p_rvMix, .2f }, { p_atk, 20.f }, { p_rel, 600.f } } },
+        { "Laser Garden", {
+            { p_fm, .65f }, { p_fmType, 4 }, { p_fmChar, .7f }, { p_fmRoute, .6f }, { p_fmDecay, .4f }, { p_fb, .34f }, { p_breath, .15f },
+            { p_dlMode, 0 }, { p_dlTime, .45f }, { p_dlFb, .55f }, { p_dlMod, .2f }, { p_dlTone, .55f }, { p_dlMix, .4f }, { p_dlRoute, 2 },
+            { p_rvSize, .7f }, { p_rvMix, .35f }, { p_atk, 10.f }, { p_rel, 900.f } } },
+        { "Psycho Drone", {
+            { p_hold, 1 }, { p_fm, .5f }, { p_fmType, 5 }, { p_fmChar, .5f }, { p_fmRoute, .4f }, { p_fmDecay, 8.f }, { p_fb, .4f }, { p_wind, .2f }, { p_stick, .7f },
+            { p_dlMode, 2 }, { p_dlTime, .55f }, { p_dlFb, .7f }, { p_dlMod, .6f }, { p_dlRate, .35f }, { p_dlTone, .4f }, { p_dlMix, .5f }, { p_dlLoop, .25f }, { p_dlRoute, 0 },
+            { p_p1a, .4f }, { p_p2a, .6f }, { p_rvSize, .9f }, { p_rvMix, .4f }, { p_atk, 2500.f }, { p_rel, 6000.f } } },
+        { "Wooden Pipe", {
+            { p_fm, .75f }, { p_fmType, 2 }, { p_fmChar, .5f }, { p_fmRoute, .15f }, { p_fmDecay, .6f }, { p_fb, .42f }, { p_focus, .75f }, { p_breath, .1f }, { p_bright, .3f },
+            { p_p1a, .5f }, { p_p2a, .8f }, { p_rvSize, .5f }, { p_rvMix, .25f }, { p_atk, 15.f }, { p_rel, 700.f } } },
+        { "Metal Resonance", {
+            { p_fm, .6f }, { p_fmType, 1 }, { p_fmChar, .55f }, { p_fmRoute, .25f }, { p_fmDecay, 2.5f }, { p_fb, .4f }, { p_focus, .8f }, { p_drive, .45f },
+            { p_dlMode, 0 }, { p_dlTime, .3f }, { p_dlFb, .45f }, { p_dlMix, .3f }, { p_dlLoop, .15f }, { p_dlRoute, 1 },
+            { p_p1a, .55f }, { p_p2a, .6f }, { p_rvSize, .8f }, { p_rvMix, .4f }, { p_atk, 40.f }, { p_rel, 2000.f } } },
     };
     return f;
 }

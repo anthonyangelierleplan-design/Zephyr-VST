@@ -50,7 +50,7 @@ public:
     explicit ZephyrContent (ZephyrProcessor&);
     ~ZephyrContent() override;
     void paint (juce::Graphics&) override;
-    static constexpr int designW = 1400, designH = 790;
+    static constexpr int designW = 1400, designH = 1040;
 private:
     void timerCallback() override;
     void buildPanelTex();
@@ -75,7 +75,8 @@ private:
     int lastMidi = 0, midiFlash = 0;
 
     Plate pipePlate { "THE PIPE" }, resPlate { "RESONATOR  -  FEEDBACK LOOP" }, spacePlate { "SPACE  &  OUTPUT" },
-          presPlate { "AFTERTOUCH  -  WHAT PRESSURE DOES" }, perfPlate { "PERFORMANCE" };
+          presPlate { "AFTERTOUCH  -  WHAT PRESSURE DOES" }, perfPlate { "PERFORMANCE" },
+          fmPlate { "FM SYNTH  -  WHAT EXCITES THE PIPE" }, dlPlate { "DELAY  -  SPRING / PSYCHO  &  FX ROUTING" };
     PipeView pipeView;
 
     std::vector<std::unique_ptr<KnobUnit>> knobs;

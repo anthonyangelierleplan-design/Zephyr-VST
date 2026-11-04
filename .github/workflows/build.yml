@@ -1,0 +1,30 @@
+name: Build Zephyr
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:      # bouton "Run workflow" dans l'onglet Actions
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zephyr-VST3-Windows
+          path: build/Zephyr_artefacts/Release/VST3/
+
+      - name: Upload Standalone (pour tester sans Ableton)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zephyr-Standalone-Windows
+          path: build/Zephyr_artefacts/Release/Standalone/

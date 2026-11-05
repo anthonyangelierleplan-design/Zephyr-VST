@@ -112,7 +112,7 @@ zephyr::SynthParams ZephyrAudioProcessor::readSynth()
     arpParams.on = n(); arpParams.dir = n(); arpParams.range = n();
     s.ftype = n(); s.semMorph = f();
     s.assign = n(); s.hold = b() ? 1 : 0; s.uniDetune = f(); chordLearn = b();
-    arpParams.assign = s.assign; arpParams.hold = s.hold != 0;
+    arpParams.assign = s.assign; arpParams.hold = s.hold != 0; arpParams.skew = s.fm;
     for (int k = 4; k < kMacros; ++k) s.macro[k] = f();
     arpRateKnob = f(); arpSyncDiv = n();
     s.sub = f(); s.drift = f(); s.pmEnv = f(); s.pmOsc = f();
@@ -156,7 +156,8 @@ void ZephyrAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         evs.clear();
         arp.setParams (arpParams);
         const bool arpOn = arpParams.on != 0;
-        if (arpParams.on != lastArpOn || arpParams.assign != lastAssign) { lastArpOn = arpParams.on; lastAssign = arpParams.assign; synth.allNotesOff(); arp.allOff(); }
+        if (arpParams.on != lastArpOn) { lastArpOn = arpParams.on; synth.allNotesOff(); arp.allOff(); }
+        if (arpParams.assign != lastAssign) { lastAssign = arpParams.assign; arp.resetVoices(); }         // changer de mode ne coupe pas l'arpege : les touches restent
         if (chordLearn != lastLearn)
         {
             if (chordLearn) { learnN = 0; }
@@ -192,7 +193,7 @@ void ZephyrAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         {
             zephyr::Arp::Ev ae[256];
             const int ac = arp.process (total, arpStepHz (bpm), ae, 256);
-            for (int k = 0; k < ac; ++k) evs.push_back ({ juce::jlimit (0, total - 1, ae[k].pos), ae[k].on ? (ae[k].stack ? 8 : 7) : 9, ae[k].note, ae[k].vel });
+            for (int k = 0; k < ac; ++k) evs.push_back ({ juce::jlimit (0, total - 1, ae[k].pos), ae[k].slot >= 0 ? (ae[k].on ? 10 : 11) : (ae[k].on ? (ae[k].stack ? 8 : 7) : 9), ae[k].note, ae[k].vel, ae[k].slot });
         }
         std::stable_sort (evs.begin(), evs.end(), [] (const MidiEv& a, const MidiEv& b) { return a.pos < b.pos; });
 
@@ -213,6 +214,8 @@ void ZephyrAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
                 case 7: synth.noteOnRaw (e.a, e.v); break;
                 case 8: synth.noteOnStack (e.a, e.v); break;
                 case 9: synth.noteOffRaw (e.a); break;
+                case 10: synth.noteOnSlot (e.a, e.v, e.b); break;
+                case 11: synth.noteOffSlot (e.b); break;
                 case 5: synth.setPolyAT (e.a, e.v); break;
                 case 6: synth.setChanAT (e.v); break;
                 default: synth.setWheel (e.v); break;

@@ -17,18 +17,21 @@ struct ArpParams
     int range = 0;         // 0 : 1 octave, 1 : 2 octaves, 2 : full (4 octaves)
     int assign = 0;        // mode d'affectation des touches (voir Synth : poly, mono, unison, share, chord)
     bool hold = false;     // HOLD du synthe : meme effet que LATCH
+    float skew = 0.f;      // mode POLY : decalage des 4 VCO dans le temps (suit le potard FM, comme le FREQ MOD du Mono/Poly)
 };
 
 class Arp
 {
 public:
-    struct Ev { int pos; bool on; int note; float vel; bool stack; };
+    struct Ev { int pos; bool on; int note; float vel; bool stack; int slot = -1; };   // slot >= 0 : VCO du mode POLY (rotation)
 
     void prepare (float sampleRate) { fs = sampleRate; reset(); }
-    void reset() { nKeys = 0; sounding = -1; soundingStack = false; idx = 0; phase = 0.999999f; stamp = 0; }
+    void reset() { nKeys = 0; resetVoices(); idx = 0; phase = 0.999999f; stamp = 0; }
     void setParams (const ArpParams& p) { P = p; }
     void setChord (const int* iv, int n) { chordN = std::min (6, std::max (0, n)); for (int i = 0; i < chordN; ++i) chord[i] = iv[i]; }
-    void allOff() { nKeys = 0; }
+    void allOff() { nKeys = 0; resetVoices(); }
+    // changement de mode : on oublie ce qui sonne (le synthe a deja relache ses voix) mais on garde les touches : l'arpege continue
+    void resetVoices() { sounding = -1; soundingStack = false; for (auto& sn : slotNote) sn = -1; rot = 0; nPend = 0; }
 
     void noteOn (int note, float vel)
     {
@@ -49,33 +52,64 @@ public:
             }
     }
 
-    // stepHz : cadence des pas (frequence du LFO 2) ; renvoie le nombre d'evenements ecrits
+    // stepHz : cadence des pas ; renvoie le nombre d'evenements ecrits.
+    // Mode POLY (comme le Mono/Poly) : les pas tournent sur 4 VCO ; chaque VCO garde sa note jusqu'a ce que son tour revienne,
+    // donc un motif de 3 notes glisse sur 4 VCO et l'arpege se decale. Le potard FM (skew) retarde chaque VCO d'une fraction de pas differente.
     int process (int n, float stepHz, Ev* out, int maxOut)
     {
         int cnt = 0;
         auto off = [&] (int pos) { if (sounding >= 0 && cnt < maxOut) { out[cnt++] = { pos, false, sounding, 0.f, soundingStack }; } sounding = -1; };
-        if (P.on == 0) { off (0); return cnt; }
+        auto slotsOff = [&] (int pos)
+        {
+            nPend = 0;
+            for (int k = 0; k < kVco; ++k) if (slotNote[k] >= 0 && cnt < maxOut) { out[cnt++] = { pos, false, slotNote[k], 0.f, false, k }; slotNote[k] = -1; }
+        };
+        if (P.on == 0) { off (0); slotsOff (0); return cnt; }
+        if (P.assign != 0) slotsOff (0);
         const float inc = std::max (0.f, stepHz) / fs;
+        const float stepLen = stepHz > 0.01f ? fs / stepHz : fs;
         for (int i = 0; i < n; ++i)
         {
-            if (nKeys == 0) { off (i); phase = 0.999999f; idx = 0; continue; }
+            if (nKeys == 0) { off (i); slotsOff (i); phase = 0.999999f; idx = 0; rot = 0; continue; }
             phase += inc;
             if (phase >= 1.f)
             {
                 phase -= std::floor (phase);
                 off (i);
                 int seq[128]; const int len = buildSeq (seq);
-                if (len > 0 && cnt < maxOut)
+                if (len > 0)
                 {
                     idx %= len;
                     const int note = seq[idx++];
-                    const bool stack = P.assign == 2;
-                    out[cnt++] = { i, true, note, lastVel(), stack };
-                    sounding = note; soundingStack = stack;
+                    if (P.assign == 0)
+                    {
+                        static const float kOff[kVco] { 0.f, 0.46f, 0.21f, 0.71f };
+                        const int k = rot; rot = (rot + 1) % kVco;
+                        const int d = (int) (std::min (1.f, std::max (0.f, P.skew)) * kOff[k] * stepLen);
+                        if (nPend + 2 <= kPend)
+                        {
+                            if (slotNote[k] >= 0) pend[nPend++] = { i + d, { 0, false, slotNote[k], 0.f, false, k } };
+                            pend[nPend++] = { i + d, { 0, true, note, lastVel(), false, k } };
+                            slotNote[k] = note;
+                        }
+                    }
+                    else if (cnt < maxOut)
+                    {
+                        const bool stack = P.assign == 2;
+                        out[cnt++] = { i, true, note, lastVel(), stack };
+                        sounding = note; soundingStack = stack;
+                    }
                 }
             }
             else if (sounding >= 0 && phase >= 0.5f) off (i);
         }
+        int w = 0;                                                             // evenements retardes : ceux qui tombent dans ce bloc partent, les autres attendent
+        for (int k = 0; k < nPend; ++k)
+        {
+            if (pend[k].at < n) { if (cnt < maxOut) { out[cnt] = pend[k].ev; out[cnt].pos = pend[k].at; ++cnt; } }
+            else { pend[w] = pend[k]; pend[w].at -= n; ++w; }
+        }
+        nPend = w;
         return cnt;
     }
 
@@ -85,6 +119,9 @@ private:
     Key keys[kKeys];
     int nKeys = 0, sounding = -1, idx = 0, chord[6] { 0, 4, 7, 11, 0, 0 }, chordN = 4;
     bool soundingStack = false;
+    static constexpr int kVco = 4, kPend = 32;
+    int slotNote[kVco] { -1, -1, -1, -1 }, rot = 0, nPend = 0;
+    struct Pend { int at; Ev ev; } pend[kPend];
     float fs = 44100.f, phase = 0.999999f;
     uint64_t stamp = 0;
     ArpParams P;

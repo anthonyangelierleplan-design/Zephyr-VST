@@ -81,7 +81,7 @@ private:
     zephyr::Params readParams() const;
     zephyr::SynthParams readSynth();
     zephyr::ArpParams arpParams;
-    struct MidiEv { int pos; int type; int a; float v; };       // type : 0 note on, 1 note off, 2 all off, 3 bend, 4 molette, 5 aftertouch poly, 6 aftertouch canal, 7/8/9 notes brutes de l'arpegiateur (simple / pile unison / off)
+    struct MidiEv { int pos; int type; int a; float v; int b = -1; };       // type : 0 note on, 1 note off, 2 all off, 3 bend, 4 molette, 5 aftertouch poly, 6 aftertouch canal, 7/8/9 notes brutes de l'arpegiateur (simple / pile unison / off), 10/11 VCO du mode POLY (on / off, b = VCO)
     std::vector<MidiEv> evs;
     int lastArpOn = 0, lastAssign = 0, chordN = 3, chordIv[6] { 4, 7, 11, 0, 0, 0 }, learnN = 0, learnNotes[6] {};
     bool chordLearn = false, lastLearn = false;

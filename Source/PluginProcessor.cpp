@@ -269,7 +269,9 @@ void ZephyrAudioProcessor::applyState (juce::ValueTree state)
     headerScope.store ((int) state.getProperty ("hdr", 0));
     {
         juce::StringArray t; t.addTokens (state.getProperty ("macroCC", "").toString(), ",", ""); t.removeEmptyStrings();
-        for (int k = 0; k < 8; ++k) macroCC[k].store (k < t.size() ? t[k].getIntValue() : 21 + k);
+        bool oldDefault = t.size() == 8;                              // anciennes valeurs par defaut (21..28) : on passe aux CC des macros de l'Hydrasynth
+        for (int k = 0; k < t.size() && k < 8; ++k) oldDefault = oldDefault && t[k].getIntValue() == 21 + k;
+        for (int k = 0; k < 8; ++k) macroCC[k].store (k < t.size() && ! oldDefault ? t[k].getIntValue() : 16 + k);
     }
     {
         const auto cs = state.getProperty ("chord", "").toString();

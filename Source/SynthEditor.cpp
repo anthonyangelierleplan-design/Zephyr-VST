@@ -360,11 +360,11 @@ void SynthPanel::mouseDown (const juce::MouseEvent& e)
         {
             juce::PopupMenu m;
             m.addItem (1, "MIDI learn : bouge un potard de ton clavier (CC actuel " + juce::String (proc.macroCC[k].load()) + ")");
-            m.addItem (2, "CC par defaut (" + juce::String (21 + (int) k) + ")");
+            m.addItem (2, "CC par defaut (" + juce::String (16 + (int) k) + ")");
             m.showMenuAsync (juce::PopupMenu::Options(), [this, k] (int r)
             {
                 if (r == 1) proc.learnMacro.store ((int) k);
-                else if (r == 2) { proc.macroCC[k].store (21 + (int) k); proc.learnMacro.store (-1); }
+                else if (r == 2) { proc.macroCC[k].store (16 + (int) k); proc.learnMacro.store (-1); }
             });
             return;
         }

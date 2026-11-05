@@ -13,7 +13,7 @@ Deux plugins, même design :
   HPF doux en amont, **SATURATION** dans la boucle du filtre (brillant à petite dose, claquant à fond).
 - **POLY-MOD** façon Prophet : enveloppe du filtre et OSC 2 vers la fréquence ou la largeur d'impulsion de l'OSC 1, et/ou le filtre.
 - Enveloppes ADSR filtre et ampli, **4 LFO** (SIN / TRI / SAW / SQR / S&H, slew, fade-in, retrig, synchro), **wavefolder**.
-- **Matrice 12 slots** (menus rangés par familles) et **8 macros** pilotables en MIDI CC (21 à 28, clic droit = learn).
+- **Matrice 12 slots** (menus rangés par familles) et **8 macros** pilotables en MIDI CC (16 à 23 = macros 1 à 8 de l'Hydrasynth, clic droit = learn).
 - **Key Assign** : POLY / MONO / UNISON (8 voix empilées) / SHARE / CHORD MEMORY, HOLD. **Arpégiateur** façon Monopoly.
 
 ## Effets (rack réordonnable, prises de patch)

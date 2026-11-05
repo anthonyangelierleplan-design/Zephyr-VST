@@ -61,7 +61,7 @@ public:
 
     juce::AudioProcessorValueTreeState apvts;
     juce::MidiKeyboardState keyboardState;  // clavier a l'ecran (version instrument)
-    std::atomic<int> macroCC[8] { 21, 22, 23, 24, 25, 26, 27, 28 }, learnMacro { -1 };   // CC MIDI des macros (21..28 par defaut) et macro en apprentissage
+    std::atomic<int> macroCC[8] { 16, 17, 18, 19, 20, 21, 22, 23 }, learnMacro { -1 };   // CC MIDI des macros (16..23 par defaut = macros 1..8 de l'Hydrasynth) et macro en apprentissage
     zephyr::Synth synth;                     // utilise seulement par la version instrument (ZEPHYR_SYNTH)
     zephyr::Arp arp;                         // arpegiateur (version instrument)
     zephyr::Engine engine;                   // rack + patchbay vivent ici ; l'editeur les lit et les modifie

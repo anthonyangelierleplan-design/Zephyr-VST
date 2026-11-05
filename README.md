@@ -1,30 +1,42 @@
-# Zephyr - Foudre Audio
+# Zephyr — Foudre Audio
 
-Synthe experimental de feedback : larsens, tuyaux qui sifflent, filtres qui s'auto-oscillent.
-Chaque voix est une boucle (ligne a retard + filtre passe-bande + saturation) accordee sur la note.
-La pression (aftertouch polyphonique) pousse le gain de la boucle et/ou le "vent" : la note monte par paliers sur les harmoniques
-(arpege naturel) ou sur les degres d'une gamme, avec hysteresis.
+Synthétiseur polyphonique vintage pour sons riches, lumineux et subtils, bâti sur l'architecture d'Orage.
+Deux plugins, même design :
 
-- RESONATOR : PIPE (ligne a retard) ou FILTER (filtre qui s'auto-oscille).
-- LOCK : HARMONIC (serie harmonique de la note) ou SCALE (gamme + tonique au choix).
-- Matrice de modulation : 6 emplacements source -> cible -> dosage. Sources : aftertouch poly, aftertouch de canal, molette, expression, velocite, macros 1-8 (CC16-23), 2 CC en apprentissage MIDI (LEARN A/B). Cibles : FEEDBACK, WIND, FOCUS, BRIGHT, DRIVE, BREATH, PITCH, FM LEVEL, FM CHARACTER, DELAY MIX, DELAY FEEDBACK, REVERB MIX.
-- Pression par note, pression de canal, mode MPE, molette de modulation (CC1) : tout est pris en compte. Temoin MIDI dans l'interface.
-- HOLD (drone) et pedale de sustain. Petit synthe FM (Bell, Metal, Wood, Spring, Laser, Glass) qui excite le tuyau et/ou sonne a cote (ROUTE). Delay Normal / Spring / Psycho, routage Reverb>Delay, Delay>Reverb ou Parallele, renvoi dans la boucle (TO LOOP).
-- Sortie toujours limitee sous 0 dBFS. Fenetre redimensionnable. Presets utilisateur : `%APPDATA%\Foudre Audio\Zephyr\Presets`.
+- **Zephyr** (instrument VST3) : synthé 12 voix + rack d'effets. Onglets SYNTH / EFFECTS + volet MATRIX. Répond au MIDI.
+- **Zephyr FX** (effet VST3) : le rack d'effets seul, pour les pistes audio.
 
-Compilation : pousser sur GitHub, onglet Actions -> artefacts `Zephyr-VST3-Windows` et `Zephyr-Standalone-Windows`.
+## Synthé
+- 2 oscillateurs **SAW / PULSE / TRI / SIN**, octaves, pitch / fine, PWM, **hard sync**, **FM**, **ring mod**, **sub-oscillateur** (carré, une octave sous l'OSC 1), bruit, glide.
+- **DRIFT** : chaque voix dérive lentement et différemment (désaccord, cutoff, temps d'enveloppe), oscillateurs libres.
+- **Filtre** au choix : **SEM** (12 dB, morph LP / notch / HP), **LADDER** (24 dB), **PROPHET** (24 dB façon CEM3320, graves conservés).
+  HPF doux en amont, **SATURATION** dans la boucle du filtre (brillant à petite dose, claquant à fond).
+- **POLY-MOD** façon Prophet : enveloppe du filtre et OSC 2 vers la fréquence ou la largeur d'impulsion de l'OSC 1, et/ou le filtre.
+- Enveloppes ADSR filtre et ampli, **4 LFO** (SIN / TRI / SAW / SQR / S&H, slew, fade-in, retrig, synchro), **wavefolder**.
+- **Matrice 12 slots** (menus rangés par familles) et **8 macros** pilotables en MIDI CC (21 à 28, clic droit = learn).
+- **Key Assign** : POLY / MONO / UNISON (8 voix empilées) / SHARE / CHORD MEMORY, HOLD. **Arpégiateur** façon Monopoly.
 
+## Effets (rack réordonnable, prises de patch)
+- **WARM SATURATION** : TAPE / CONSOLE / TUBE, DRIVE, TONE.
+- **EQ** : LOW / MID / AIR.
+- **FILTER** : HPF > LPF résonants.
+- **PHASER** : 4 à 12 étages, MIX, RATE (ou synchro), DEPTH, FEEDBACK.
+- **COMPRESSOR** : OPTO (doux, relâchement lent) ou GLUE (bus), RATIO, THRESHOLD, ATTACK, VU-mètre.
+- **STRING ENSEMBLE** façon Solina : trois lignes, chorus lent + vibrato rapide, MIX, DEPTH, SPEED, TONE.
+- **DELAY multimode** : TAPE (pleurage, saturation, s'assombrit) / ICE (chaque répétition monte d'une octave et se diffuse) /
+  PING-PONG / DIGITAL (TONE = passe-bas, MOD = passe-haut) ; TIME ou synchro, FEEDBACK, TONE, MOD, MIX.
+- **PLATE REVERB** : SIZE, DECAY, PRE-DELAY, DAMPING, MOTION, WIDTH, SHIMMER, LOW CUT, FREEZE.
+- **STEREO WIDE** : WIDTH (mid/side), SPREAD (crée de la stéréo à partir d'un son mono), BASS MONO.
+- Tous les modules démarrent neutres (mix et drive à zéro) ; les presets d'usine gardent leur son.
 
-## Corps (BODY)
-- PIPE, FILTER, BOW (corde frottee, aftertouch = pression d archet), REED (anche de clarinette, aftertouch = souffle).
-- STRING (corde pincee Karplus-Strong : FOCUS = position du pincement, FEEDBACK = sustain),
-- PLATE (plaque/cloche/bol, 8 modes : WIND morphe barre > cloche > plaque > bol),
-- ROOM (larsen de piece : la piece est le tuyau, WIND ajoute une derive lente de la distance),
-- CHOIR (choeur de voyelles : WIND = A E I O U, FOCUS = nettete des formants).
-- LADDER (filtre en echelle auto-oscillant : prise de sortie passe-bas + saturation asymetrique chaude),
-- MULTIMODE (filtre multimode : BRIGHT balaie passe-bas > passe-bande > passe-haut ; le souffle et le bruit passent selon le mode).
-  Dans FILTER, LADDER et MULTIMODE la hauteur reste celle du filtre qui oscille ; seule la couleur change.
+## Design
+- Trois thèmes (bouton en haut) : **ALUMINIUM** (aluminium brossé et bleu, par défaut), **CREME** (crème, bois et ambre), **MINUIT** (bleu nuit).
+- Plaques de modules vissées, flancs en bois, potards à jupe moletée et chapeau en aluminium, arc lumineux de la valeur.
+- **Prisme** dans l'en-tête : un faisceau blanc entre, un éventail de couleurs sort ; il s'allume avec le niveau et s'ouvre avec la brillance du son.
+  Un clic bascule sur l'**oscilloscope**.
+- Fenêtre redimensionnable, cran magnétique au zéro des potards bipolaires.
 
-## Enveloppe ADSR
-ATTACK / DECAY / SUSTAIN / RELEASE. Par defaut SUSTAIN = 10 (aucun decay audible). Pour un pluck : BREATH a 0, ATTACK court,
-DECAY 150-300 ms, SUSTAIN 0. Voir les presets Short Pluck et Pipe Pluck.
+## Compilation (GitHub Actions)
+Chaque push sur `main` lance le build Windows et publie `Zephyr-VST3-Windows.zip` dans la Release **latest** du dépôt.
+Dézipper et copier `Zephyr.vst3` et `Zephyr FX.vst3` dans `C:\Program Files\Common Files\VST3`.
+L'ancien Zephyr (synthé à larsens) avait un autre identifiant : supprimer son `.vst3` avant de copier le nouveau.

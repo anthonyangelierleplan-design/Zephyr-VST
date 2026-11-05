@@ -124,6 +124,7 @@ const std::vector<SynDef>& synDefs()
         F ("s_sub", "Sub Level", 0, 1, 0);  F ("s_drift", "Drift", 0, 1, 0);
         F ("s_pmEnv", "Poly-Mod Filter Env", 0, 1, 0);  F ("s_pmOsc", "Poly-Mod VCO2", 0, 1, 0);
         B ("s_pmFreq", "Poly-Mod > Freq VCO1", false);  B ("s_pmPw", "Poly-Mod > PW VCO1", false);  B ("s_pmFilt", "Poly-Mod > Filter", false);
+        F ("s_arpShift", "Arp Shift", 0, 1, 0);  F ("s_arpCluster", "Arp Cluster", 0, 1, 0);
         return v;
     }();
     return defs;
@@ -245,39 +246,52 @@ void sSilk (ZephyrAudioProcessor& p)
             {"ensMix",0.5f},{"wideSpread",0.5f},{"revMix",0.35f},{"revDecay",0.7f} });
     M (p, 1, MsPolyAT, MdLpf, 0.3f);
 }
-// ---- KEYS / BELLS
+// ---- KEYS / BELLS : claviers qui tiennent la note (piano electrique, Wurli, orgue, vibraphone) et cloches longues
+void kTinePiano (ZephyrAudioProcessor& p)                     // piano a lames : sinus + harmonique de lame, "bark" FM a l'attaque, autopan
+{
+    S (p, { {"output",-8},{"s_wave1",3},{"s_wave2",3},{"s_oct2",4},{"s_lvl1",0.85f},{"s_lvl2",0.16f},{"s_fm",0.06f},{"s_ftype",0},{"s_lpf",0.72f},{"s_fltEnv",0.15f},{"s_fD",0.7f},{"s_fS",0.3f},
+            {"s_aA",0.f},{"s_aD",0.93f},{"s_aS",0.22f},{"s_aR",0.62f},{"s_drift",0.12f},{"s_l1Rate",0.56f},
+            {"phMix",0.25f},{"phRate",0.18f},{"revMix",0.22f},{"revDecay",0.6f} });
+    M (p, 1, MsAmpEnv, MdFm, 0.22f); M (p, 2, MsVel, MdFm, 0.18f); M (p, 3, MsLfo1, MdPan, 0.35f); M (p, 4, MsVel, MdLevel, 0.25f);
+}
+void kWurliGold (ZephyrAudioProcessor& p)                     // piano a anches : pulse etroite, saturation, tremolo
+{
+    S (p, { {"output",-8},{"s_wave1",1},{"s_pw1",0.42f},{"s_wave2",2},{"s_oct2",3},{"s_lvl1",0.7f},{"s_lvl2",0.3f},{"s_ftype",2},{"s_lpf",0.52f},{"s_lpfRes",0.1f},{"s_fltEnv",0.3f},
+            {"s_fD",0.85f},{"s_fS",0.35f},{"s_drive",0.35f},{"s_aA",0.f},{"s_aD",0.9f},{"s_aS",0.4f},{"s_aR",0.55f},{"s_l1Rate",0.68f},
+            {"satMode",2},{"satDrive",0.2f},{"revMix",0.2f} });
+    M (p, 1, MsLfo1, MdLevel, -0.16f); M (p, 2, MsVel, MdFltEnv, 0.35f); M (p, 3, MsWheel, MdLevel, -0.3f);
+}
+void kElectricGrand (ZephyrAudioProcessor& p)                 // piano a cordes amplifie : saw + tri, filtre qui s'ouvre avec la velocite
+{
+    S (p, { {"output",-9},{"s_wave1",0},{"s_wave2",2},{"s_oct2",3},{"s_fine2",4},{"s_lvl1",0.6f},{"s_lvl2",0.4f},{"s_ftype",2},{"s_lpf",0.5f},{"s_lpfRes",0.12f},{"s_fltEnv",0.4f},
+            {"s_fD",0.88f},{"s_fS",0.3f},{"s_key",0.8f},{"s_aA",0.f},{"s_aD",0.92f},{"s_aS",0.28f},{"s_aR",0.6f},{"s_drift",0.15f},
+            {"ensMix",0.22f},{"revMix",0.25f},{"revDecay",0.65f} });
+    M (p, 1, MsVel, MdFltEnv, 0.4f); M (p, 2, MsVel, MdLevel, 0.25f);
+}
+void kSilkOrgan (ZephyrAudioProcessor& p)                     // orgue doux : tirettes 16' 8' 4', cabine tournante (phaser + ensemble)
+{
+    S (p, { {"output",-10},{"s_wave1",3},{"s_wave2",3},{"s_oct2",3},{"s_lvl1",0.7f},{"s_lvl2",0.55f},{"s_sub",0.4f},{"s_ftype",0},{"s_lpf",0.8f},{"s_fltEnv",0.f},
+            {"s_aA",0.08f},{"s_aD",0.5f},{"s_aS",1.f},{"s_aR",0.32f},{"s_drift",0.1f},
+            {"phMix",0.3f},{"phRate",0.5f},{"phDepth",0.4f},{"ensMix",0.3f},{"ensSpeed",0.75f},{"revMix",0.25f} });
+    M (p, 1, MsWheel, MdFxPhRate, 0.5f); M (p, 2, MsPolyAT, MdSat, 0.4f);
+}
+void kVibraphone (ZephyrAudioProcessor& p)                    // vibraphone : sinus + partiel aigu, longue decroissance, moteur de tremolo
+{
+    S (p, { {"output",-9},{"s_wave1",3},{"s_wave2",3},{"s_oct2",4},{"s_tune2",0.f},{"s_lvl1",0.85f},{"s_lvl2",0.22f},{"s_ring",0.08f},{"s_ftype",0},{"s_lpf",0.78f},
+            {"s_aA",0.f},{"s_aD",0.95f},{"s_aS",0.12f},{"s_aR",0.8f},{"s_l1Rate",0.62f},{"revMix",0.38f},{"revDecay",0.75f},{"wideSpread",0.3f} });
+    M (p, 1, MsLfo1, MdLevel, -0.22f); M (p, 2, MsVel, MdLevel, 0.3f);
+}
 void kCrystalBell (ZephyrAudioProcessor& p)
 {
-    S (p, { {"output",-9},{"s_wave1",3},{"s_wave2",3},{"s_oct2",3},{"s_tune2",7},{"s_fm",0.35f},{"s_lvl2",0.2f},{"s_ftype",2},{"s_lpf",0.85f},{"s_fltEnv",0.f},
-            {"s_aA",0.f},{"s_aD",0.6f},{"s_aS",0.f},{"s_aR",0.65f},{"revMix",0.4f},{"revShimmer",0.3f},{"revDecay",0.75f} });
-    M (p, 1, MsAmpEnv, MdFm, 0.3f); M (p, 2, MsVel, MdFm, 0.3f);
-}
-void kElectricSilk (ZephyrAudioProcessor& p)
-{
-    S (p, { {"output",-8},{"s_wave1",3},{"s_wave2",2},{"s_oct2",3},{"s_lvl2",0.3f},{"s_fm",0.08f},{"s_ftype",0},{"s_lpf",0.6f},{"s_fltEnv",0.3f},{"s_fD",0.45f},{"s_fS",0.2f},
-            {"s_aA",0.f},{"s_aD",0.62f},{"s_aS",0.3f},{"s_aR",0.45f},{"phMix",0.35f},{"phRate",0.25f},{"revMix",0.25f} });
-    M (p, 1, MsEnv, MdFm, 0.3f); M (p, 2, MsVel, MdFltEnv, 0.4f);
+    S (p, { {"output",-9},{"s_wave1",3},{"s_wave2",3},{"s_oct2",3},{"s_tune2",7},{"s_fm",0.3f},{"s_lvl2",0.2f},{"s_ftype",2},{"s_lpf",0.85f},{"s_fltEnv",0.f},
+            {"s_aA",0.f},{"s_aD",0.9f},{"s_aS",0.15f},{"s_aR",0.78f},{"revMix",0.4f},{"revShimmer",0.3f},{"revDecay",0.75f} });
+    M (p, 1, MsAmpEnv, MdFm, 0.3f); M (p, 2, MsVel, MdFm, 0.25f);
 }
 void kPolyModBell (ZephyrAudioProcessor& p)
 {
     S (p, { {"output",-9},{"s_wave1",2},{"s_wave2",3},{"s_tune2",7},{"s_fine2",14},{"s_lvl2",0.f},{"s_pmOsc",0.4f},{"s_pmEnv",0.2f},{"s_pmFreq",1},{"s_ftype",2},{"s_lpf",0.75f},
-            {"s_fltEnv",0.3f},{"s_fD",0.4f},{"s_fS",0.f},{"s_aA",0.f},{"s_aD",0.55f},{"s_aS",0.f},{"s_aR",0.6f},{"dlyMode",2},{"dlyMix",0.2f},{"dlySync",14},{"revMix",0.35f} });
+            {"s_fltEnv",0.3f},{"s_fD",0.85f},{"s_fS",0.2f},{"s_aA",0.f},{"s_aD",0.9f},{"s_aS",0.2f},{"s_aR",0.75f},{"dlyMode",2},{"dlyMix",0.2f},{"dlySync",14},{"revMix",0.35f} });
     M (p, 1, MsVel, MdPolyMod, 0.25f);
-}
-void kCelesta (ZephyrAudioProcessor& p)
-{
-    S (p, { {"output",-8},{"s_wave1",2},{"s_oct1",3},{"s_ftype",0},{"s_lpf",0.5f},{"s_fltEnv",0.5f},{"s_fD",0.3f},{"s_fS",0.f},{"s_aA",0.f},{"s_aD",0.45f},{"s_aS",0.f},{"s_aR",0.55f},
-            {"dlyMode",1},{"dlyMix",0.3f},{"dlyTime",0.55f},{"revMix",0.4f},{"revDecay",0.7f} });
-}
-void kHarpsichord (ZephyrAudioProcessor& p)
-{
-    S (p, { {"output",-9},{"s_wave1",1},{"s_pw1",0.25f},{"s_wave2",0},{"s_oct2",3},{"s_lvl2",0.25f},{"s_hpf",0.3f},{"s_ftype",0},{"s_lpf",0.55f},{"s_fltEnv",0.6f},{"s_fD",0.2f},{"s_fS",0.f},
-            {"s_drive",0.3f},{"s_aA",0.f},{"s_aD",0.4f},{"s_aS",0.f},{"s_aR",0.35f},{"ensMix",0.25f},{"revMix",0.25f} });
-}
-void kMarimbaSun (ZephyrAudioProcessor& p)
-{
-    S (p, { {"output",-8},{"s_wave1",2},{"s_wave2",3},{"s_oct2",4},{"s_ring",0.3f},{"s_lvl2",0.25f},{"s_ftype",0},{"s_lpf",0.6f},{"s_fltEnv",0.3f},{"s_fD",0.15f},{"s_fS",0.f},
-            {"s_aA",0.f},{"s_aD",0.28f},{"s_aS",0.f},{"s_aR",0.32f},{"revMix",0.25f},{"wideSpread",0.3f} });
 }
 // ---- BRASS / LEAD
 void lGoldenBrass (ZephyrAudioProcessor& p)
@@ -411,8 +425,8 @@ const Factory kFactory[] = {
     { "Aurora Borealis", "Pad", pAurora }, { "Glass Cathedral", "Pad", pGlassCathedral }, { "Silver Lining", "Pad", pSilverLining }, { "Velvet Horizon", "Pad", pVelvetHorizon },
     { "Morning Dew", "Pad", pMorningDew }, { "Lumiere", "Pad", pLumiere }, { "Polaris Chords", "Pad", pPolaris },
     { "Solina Dreams", "Strings", sSolina }, { "Velvet Orchestra", "Strings", sVelvetOrch }, { "Cello Light", "Strings", sCelloLight }, { "Ensemble Royal", "Strings", sEnsembleRoyal }, { "Silk Strings", "Strings", sSilk },
-    { "Crystal Bell", "Keys / Bells", kCrystalBell }, { "Electric Silk", "Keys / Bells", kElectricSilk }, { "Poly-Mod Bell", "Keys / Bells", kPolyModBell }, { "Celesta Moon", "Keys / Bells", kCelesta },
-    { "Harpsichord Dust", "Keys / Bells", kHarpsichord }, { "Marimba Sun", "Keys / Bells", kMarimbaSun },
+    { "Tine Piano", "Keys / Bells", kTinePiano }, { "Wurli Gold", "Keys / Bells", kWurliGold }, { "Electric Grand", "Keys / Bells", kElectricGrand },
+    { "Silk Organ", "Keys / Bells", kSilkOrgan }, { "Vibraphone Dream", "Keys / Bells", kVibraphone }, { "Crystal Bell", "Keys / Bells", kCrystalBell }, { "Poly-Mod Bell", "Keys / Bells", kPolyModBell },
     { "Golden Brass", "Brass / Lead", lGoldenBrass }, { "Prophecy Sync", "Brass / Lead", lProphecySync }, { "Silver Flute", "Brass / Lead", lSilverFlute }, { "Lumen Lead", "Brass / Lead", lLumenLead }, { "Velvet Horn", "Brass / Lead", lVelvetHorn },
     { "Satin Bass", "Bass", bSatin }, { "Moon Ladder", "Bass", bMoon }, { "Deep Prophet", "Bass", bDeepProphet }, { "Round Sub", "Bass", bRoundSub },
     { "Starlight Arp", "Arp / Seq", aStarlight }, { "Crystal Cascade", "Arp / Seq", aCrystalCascade }, { "Prism Sequence", "Arp / Seq", aPrismSeq }, { "Monopoly Lights", "Arp / Seq", aMonopolyLights },

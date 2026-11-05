@@ -245,7 +245,7 @@ public:
         static const float kFm[4] { 0.25f, 1.f, 0.65f, 1.4f };
         if (auto* v = startVoice (note, vel, 0.f, 0.f, 1.f, slot, true)) v->fmK = kFm[slot & 3];
     }
-    void noteOffSlot (int slot) { if (slot >= 0 && slot < kVoices && voices[slot].active && voices[slot].gated) release (voices[slot]); }
+    void noteOffSlot (int slot, int note) { if (slot >= 0 && slot < kVoices && voices[slot].active && voices[slot].gated && voices[slot].note == note) release (voices[slot]); }
     const float* fxMod() const { return fxOut; }                  // modulations globales des effets (matrice : destinations FX / delay / reverb)
     int activeVoices() const { int n = 0; for (auto& v : voices) n += v.active ? 1 : 0; return n; }
 

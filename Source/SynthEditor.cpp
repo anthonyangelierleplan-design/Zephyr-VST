@@ -318,13 +318,16 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p) : proc (p)
         auto* mode = selector (*u, "s_arpMode", juce::StringArray { "UP", "DOWN", "UP-DN" });
         auto* oct = selector (*u, "s_arpOct", juce::StringArray { "1 OCT", "2 OCT", "FULL" });
         auto* rate = knob (*u, "s_arpRate", "CLOCK"); auto* sync = combo (*u, "s_arpSync");
+        auto* shift = knob (*u, "s_arpShift", "SHIFT"); auto* clus = knob (*u, "s_arpCluster", "CLUSTER");     // decalages du mode POLY
         u->layoutFn = [=] (juce::Rectangle<int> r)
         {
-            const int lw = (int) (r.getWidth() * 0.58f);
+            const int lw = juce::jmin (196, (int) (r.getWidth() * 0.52f));
             on->setBounds (r.getX(), r.getY(), lw, 46); mode->setBounds (r.getX(), r.getY() + 54, lw, 46); oct->setBounds (r.getX(), r.getY() + 108, lw, 46);
-            const int rw = r.getWidth() - lw - 8;
-            sync->setBounds (r.getX() + lw + 8, r.getY() + 4, rw, 28);
-            rate->setBounds (r.getX() + lw + 8, r.getY() + 44, rw, juce::jmin (r.getHeight() - 44, rw + 22));
+            const int x2 = r.getX() + lw + 10, rw = r.getRight() - x2;
+            sync->setBounds (x2, r.getY() + 2, rw, 28);
+            rate->setBounds (x2 + (rw - juce::jmin (rw, 96)) / 2, r.getY() + 32, juce::jmin (rw, 96), 100);
+            shift->setBounds (x2, r.getY() + 134, rw / 2, r.getHeight() - 134);
+            clus->setBounds (x2 + rw / 2, r.getY() + 134, rw / 2, r.getHeight() - 134);
         };
     }
     startTimerHz (10);
@@ -388,7 +391,7 @@ void SynthPanel::resized()
     };
     row (0, 212, { { 0, 316.f }, { 1, 490.f }, { 2, 432.f }, { 3, 380.f } });
     row (220, 212, { { 4, 730.f }, { 5, 360.f }, { 6, 360.f }, { 7, 200.f } });
-    row (440, 276, { { 8, 330.f }, { 9, 240.f }, { 10, 360.f }, { 11, 320.f }, { 12, 290.f } });
+    row (440, 276, { { 8, 320.f }, { 9, 220.f }, { 10, 340.f }, { 11, 270.f }, { 12, 390.f } });
 
     paintFacade (tex, W, getHeight(), false);
 }

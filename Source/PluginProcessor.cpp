@@ -112,11 +112,12 @@ zephyr::SynthParams ZephyrAudioProcessor::readSynth()
     arpParams.on = n(); arpParams.dir = n(); arpParams.range = n();
     s.ftype = n(); s.semMorph = f();
     s.assign = n(); s.hold = b() ? 1 : 0; s.uniDetune = f(); chordLearn = b();
-    arpParams.assign = s.assign; arpParams.hold = s.hold != 0; arpParams.skew = s.fm;
+    arpParams.assign = s.assign; arpParams.hold = s.hold != 0;
     for (int k = 4; k < kMacros; ++k) s.macro[k] = f();
     arpRateKnob = f(); arpSyncDiv = n();
     s.sub = f(); s.drift = f(); s.pmEnv = f(); s.pmOsc = f();
     s.pmFreq = b() ? 1 : 0; s.pmPw = b() ? 1 : 0; s.pmFilt = b() ? 1 : 0;
+    arpParams.shift = f(); arpParams.cluster = f();
     jassert (i == rawSyn.size());
     return s;
 }
@@ -215,7 +216,7 @@ void ZephyrAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
                 case 8: synth.noteOnStack (e.a, e.v); break;
                 case 9: synth.noteOffRaw (e.a); break;
                 case 10: synth.noteOnSlot (e.a, e.v, e.b); break;
-                case 11: synth.noteOffSlot (e.b); break;
+                case 11: synth.noteOffSlot (e.b, e.a); break;
                 case 5: synth.setPolyAT (e.a, e.v); break;
                 case 6: synth.setChanAT (e.v); break;
                 default: synth.setWheel (e.v); break;

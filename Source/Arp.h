@@ -17,7 +17,8 @@ struct ArpParams
     int range = 0;         // 0 : 1 octave, 1 : 2 octaves, 2 : full (4 octaves)
     int assign = 0;        // mode d'affectation des touches (voir Synth : poly, mono, unison, share, chord)
     bool hold = false;     // HOLD du synthe : meme effet que LATCH
-    float skew = 0.f;      // mode POLY : decalage des 4 VCO dans le temps (suit le potard FM, comme le FREQ MOD du Mono/Poly)
+    float shift = 0.f;     // mode POLY : SHIFT, decale chaque VCO d'une fraction de pas differente
+    float cluster = 0.f;   // mode POLY : CLUSTER, resserre les 4 pas d'un tour vers son debut (a fond : accord plaque)
 };
 
 class Arp
@@ -53,8 +54,9 @@ public:
     }
 
     // stepHz : cadence des pas ; renvoie le nombre d'evenements ecrits.
-    // Mode POLY (comme le Mono/Poly) : les pas tournent sur 4 VCO ; chaque VCO garde sa note jusqu'a ce que son tour revienne,
-    // donc un motif de 3 notes glisse sur 4 VCO et l'arpege se decale. Le potard FM (skew) retarde chaque VCO d'une fraction de pas differente.
+    // Mode POLY (comme le Mono/Poly) : les pas tournent sur 4 VCO. Chaque tour de 4 pas est planifie d'un coup :
+    // SHIFT decale chaque VCO d'une fraction de pas differente, CLUSTER resserre les 4 notes vers le debut du tour
+    // (a fond, elles tombent ensemble : accord plaque ; avec un peu de SHIFT : accord gratte).
     int process (int n, float stepHz, Ev* out, int maxOut)
     {
         int cnt = 0;
@@ -64,13 +66,20 @@ public:
             nPend = 0;
             for (int k = 0; k < kVco; ++k) if (slotNote[k] >= 0 && cnt < maxOut) { out[cnt++] = { pos, false, slotNote[k], 0.f, false, k }; slotNote[k] = -1; }
         };
+        auto dropPendingOns = [&]
+        {
+            int w = 0;
+            for (int k = 0; k < nPend; ++k) if (! pend[k].ev.on) pend[w++] = pend[k];
+            nPend = w;
+        };
         if (P.on == 0) { off (0); slotsOff (0); return cnt; }
         if (P.assign != 0) slotsOff (0);
         const float inc = std::max (0.f, stepHz) / fs;
         const float stepLen = stepHz > 0.01f ? fs / stepHz : fs;
+        const float sh = std::min (1.f, std::max (0.f, P.shift)), cl = std::min (1.f, std::max (0.f, P.cluster));
         for (int i = 0; i < n; ++i)
         {
-            if (nKeys == 0) { off (i); slotsOff (i); phase = 0.999999f; idx = 0; rot = 0; continue; }
+            if (nKeys == 0) { off (i); dropPendingOns(); phase = 0.999999f; idx = 0; rot = 0; continue; }
             phase += inc;
             if (phase >= 1.f)
             {
@@ -80,21 +89,26 @@ public:
                 if (len > 0)
                 {
                     idx %= len;
-                    const int note = seq[idx++];
                     if (P.assign == 0)
                     {
-                        static const float kOff[kVco] { 0.f, 0.46f, 0.21f, 0.71f };
-                        const int k = rot; rot = (rot + 1) % kVco;
-                        const int d = (int) (std::min (1.f, std::max (0.f, P.skew)) * kOff[k] * stepLen);
-                        if (nPend + 2 <= kPend)
+                        if (rot == 0)
                         {
-                            if (slotNote[k] >= 0) pend[nPend++] = { i + d, { 0, false, slotNote[k], 0.f, false, k } };
-                            pend[nPend++] = { i + d, { 0, true, note, lastVel(), false, k } };
-                            slotNote[k] = note;
+                            static const float kOff[kVco] { 0.f, 0.46f, 0.21f, 0.71f };
+                            const int gate = std::max (16, (int) (stepLen * 0.5f * (1.f + 6.f * cl)));
+                            for (int k = 0; k < kVco && nPend + 2 <= kPend; ++k)
+                            {
+                                const int note = seq[(idx + k) % len];
+                                const int at = i + (int) ((float) k * stepLen * (1.f - cl) + sh * kOff[k] * stepLen);
+                                pend[nPend++] = { at, { 0, true, note, lastVel(), false, k } };
+                                pend[nPend++] = { at + gate, { 0, false, note, 0.f, false, k } };
+                            }
+                            idx += kVco;
                         }
+                        rot = (rot + 1) % kVco;
                     }
                     else if (cnt < maxOut)
                     {
+                        const int note = seq[idx++];
                         const bool stack = P.assign == 2;
                         out[cnt++] = { i, true, note, lastVel(), stack };
                         sounding = note; soundingStack = stack;
@@ -103,10 +117,19 @@ public:
             }
             else if (sounding >= 0 && phase >= 0.5f) off (i);
         }
-        int w = 0;                                                             // evenements retardes : ceux qui tombent dans ce bloc partent, les autres attendent
+        int w = 0;                                                             // evenements planifies : ceux qui tombent dans ce bloc partent, les autres attendent
         for (int k = 0; k < nPend; ++k)
         {
-            if (pend[k].at < n) { if (cnt < maxOut) { out[cnt] = pend[k].ev; out[cnt].pos = pend[k].at; ++cnt; } }
+            if (pend[k].at < n)
+            {
+                if (cnt < maxOut)
+                {
+                    auto e = pend[k].ev; e.pos = pend[k].at;
+                    if (e.on) slotNote[e.slot] = e.note;
+                    else if (slotNote[e.slot] == e.note) slotNote[e.slot] = -1;
+                    out[cnt++] = e;
+                }
+            }
             else { pend[w] = pend[k]; pend[w].at -= n; ++w; }
         }
         nPend = w;
@@ -119,7 +142,7 @@ private:
     Key keys[kKeys];
     int nKeys = 0, sounding = -1, idx = 0, chord[6] { 0, 4, 7, 11, 0, 0 }, chordN = 4;
     bool soundingStack = false;
-    static constexpr int kVco = 4, kPend = 32;
+    static constexpr int kVco = 4, kPend = 64;
     int slotNote[kVco] { -1, -1, -1, -1 }, rot = 0, nPend = 0;
     struct Pend { int at; Ev ev; } pend[kPend];
     float fs = 44100.f, phase = 0.999999f;
@@ -135,7 +158,6 @@ private:
         int base[16], nb = 0;
         switch (P.assign)
         {
-            case 1: case 2: base[nb++] = lastNote(); break;                                   // mono / unison : une seule note
             case 4:                                                                           // chord memory
                 base[nb++] = lastNote();
                 for (int i = 0; i < chordN && nb < 12; ++i) base[nb++] = lastNote() + chord[i];
@@ -147,6 +169,7 @@ private:
                 for (int v = 0; v < 6; ++v) base[nb++] = byTime[v % nKeys].note;
                 break;
             }
+            case 1: case 2:                                                                   // mono / unison : les notes tenues, jouees par une seule voix
             default:                                                                          // poly : notes tenues, de bas en haut
             {
                 for (int i = 0; i < nKeys; ++i) base[nb++] = keys[i].note;

@@ -173,8 +173,8 @@ juce::Path moduleGlyph (int node, juce::Rectangle<float> r)
                                                               p.addRoundedRectangle (bx, cy - bh * 0.5f, w * 0.15f, bh, 3.f); } break;
         case zephyr::NDelay:    for (int k = 0; k < 6; ++k) { const float bx = x0 + w * (0.04f + 0.16f * (float) k), bh = h * 0.95f * std::pow (0.72f, (float) k);   // echos qui s'eteignent
                                                               p.startNewSubPath (bx, cy - bh * 0.5f); p.lineTo (bx, cy + bh * 0.5f); } break;
-        case zephyr::NVerb:     for (int k = 0; k < 5; ++k) { const float rr = h * (0.18f + 0.2f * (float) k);                                                        // ondes qui s'elargissent
-                                                              p.addCentredArc (x0 + w * 0.12f, cy, rr, rr, 0.f, 0.5f, 2.64f, true); } break;
+        case zephyr::NVerb:     for (int k = 0; k < 6; ++k) { const float rr = w * (0.08f + 0.13f * (float) k), a = std::asin (juce::jmin (1.f, h * 0.5f / rr));   // ondes qui s'elargissent
+                                                              p.addCentredArc (x0 + w * 0.12f, cy, rr, rr, 0.f, 1.5708f - a, 1.5708f + a, true); } break;
         case zephyr::NWide:     p.startNewSubPath (x0, cy); p.lineTo (x0 + w, cy);                                                                         // fleche stereo
                                 p.startNewSubPath (x0 + w * 0.12f, cy - h * 0.3f); p.lineTo (x0, cy); p.lineTo (x0 + w * 0.12f, cy + h * 0.3f);
                                 p.startNewSubPath (x0 + w * 0.88f, cy - h * 0.3f); p.lineTo (x0 + w, cy); p.lineTo (x0 + w * 0.88f, cy + h * 0.3f);
@@ -311,7 +311,7 @@ juce::File themeFile() { return juce::File::getSpecialLocation (juce::File::user
 int loadThemePref() { const auto f = themeFile(); return f.existsAsFile() ? f.loadFileAsString().trim().getIntValue() : 0; }
 void saveThemePref (int i) { const auto f = themeFile(); f.getParentDirectory().createDirectory(); f.replaceWithText (juce::String (i)); }
 
-const int kTileNodes[] = { zephyr::NSat, zephyr::NColor, zephyr::NFilter, zephyr::NPhaser, zephyr::NComp, zephyr::NEnsemble, zephyr::NStut, zephyr::NDelay, zephyr::NVerb, zephyr::NWide };
+const int kTileNodes[] = { zephyr::NSat, zephyr::NColor, zephyr::NFilter, zephyr::NComp, zephyr::NPhaser, zephyr::NEnsemble, zephyr::NStut, zephyr::NDelay, zephyr::NVerb, zephyr::NWide };   // meme ordre que le rack et le spectre
 const char* nodeName (int n)
 {
     static const char* names[kNumNodes] { "INPUT", "STEREO WIDE", "SATURATION", "EQ", "FILTER", "PHASER", "COMP", "ENSEMBLE", "DELAY", "REVERB", "STUTTER", "OUTPUT" };
@@ -1185,20 +1185,33 @@ void ModuleUnit::paint (juce::Graphics& g)
     const bool lit = ! fxMod || ! isActive || isActive();
     if (fxMod && ! collapsed)
     {
-        // grand pictogramme grave dans la plaque, a droite (sous les commandes : il reste discret)
-        const float gh = juce::jmin ((float) getHeight() - 58.f, 92.f), gw = gh * 1.7f;
-        const juce::Rectangle<float> gr ((float) getWidth() - (float) jackStripWidth() - gw - 34.f, 30.f + ((float) getHeight() - 30.f - gh) * 0.5f, gw, gh);
-        if (gh > 30.f)
+        // petit ecran du module (comme celui du prisme) : pictogramme lumineux de sa couleur, reference du module
+        const float sh = (float) getHeight() - 44.f, sw = juce::jmin (250.f, sh * 2.3f);
+        const juce::Rectangle<float> scr ((float) getWidth() - (float) jackStripWidth() - sw - 22.f, 32.f, sw, sh);
+        if (sh > 40.f)
         {
-            const auto glyph = moduleGlyph (node, gr);
-            const juce::PathStrokeType st (6.f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
-            g.setColour (juce::Colours::black.withAlpha (th.dark ? 0.30f : 0.10f)); g.strokePath (glyph, st, juce::AffineTransform::translation (0.f, 1.6f));
-            g.setColour (juce::Colours::white.withAlpha (th.dark ? 0.05f : 0.55f));  g.strokePath (glyph, st, juce::AffineTransform::translation (0.f, -1.f));
-            g.setColour (mc.withAlpha (lit ? (th.dark ? 0.26f : 0.26f) : 0.06f));    g.strokePath (glyph, st);
+            g.setColour (juce::Colours::black.withAlpha (th.dark ? 0.5f : 0.25f)); g.fillRoundedRectangle (scr.translated (0.f, 1.5f), 6.f);
+            g.setGradientFill (juce::ColourGradient (C (th.screenBg).brighter (0.08f), 0.f, scr.getY(), C (th.screenBg).darker (0.4f), 0.f, scr.getBottom(), false));
+            g.fillRoundedRectangle (scr, 6.f);
+            {
+                juce::Graphics::ScopedSaveState ss (g);
+                g.reduceClipRegion (scr.reduced (2.f).toNearestInt());
+                g.setColour (mc.withAlpha (0.07f));                                                   // trame de l'ecran
+                for (float x = scr.getX() + 12.f; x < scr.getRight(); x += 18.f) g.drawVerticalLine ((int) x, scr.getY(), scr.getBottom());
+                for (float y = scr.getY() + 9.f; y < scr.getBottom(); y += 18.f) g.drawHorizontalLine ((int) y, scr.getX(), scr.getRight());
+                const auto glyph = moduleGlyph (node, scr.reduced (sw * 0.12f, sh * 0.2f).translated (0.f, -3.f));
+                const float on = lit ? 1.f : 0.3f;
+                g.setColour (mc.withAlpha (0.16f * on)); g.strokePath (glyph, juce::PathStrokeType (9.f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+                g.setColour (mc.withAlpha (0.35f * on)); g.strokePath (glyph, juce::PathStrokeType (4.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+                g.setColour (mc.brighter (0.6f).withAlpha (0.95f * on)); g.strokePath (glyph, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+                g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.10f), scr.getX(), scr.getY(), juce::Colours::white.withAlpha (0.f), scr.getX(), scr.getY() + scr.getHeight() * 0.45f, false));
+                g.fillRect (scr);                                                                      // reflet de la vitre
+                g.setColour (mc.withAlpha (0.75f * on));
+                g.setFont (font (8.5f).withExtraKerningFactor (0.18f));
+                g.drawText (moduleCode (node), scr.toNearestInt().reduced (8, 4), juce::Justification::bottomRight, false);
+            }
+            g.setColour (look::print.withAlpha (th.dark ? 0.35f : 0.45f)); g.drawRoundedRectangle (scr, 6.f, 1.2f);
         }
-        g.setColour (look::print.withAlpha (0.32f));                                           // reference gravee du module
-        g.setFont (font (9.f).withExtraKerningFactor (0.18f));
-        g.drawText (moduleCode (node), getWidth() - jackStripWidth() - 160, getHeight() - 20, 136, 12, juce::Justification::centredRight, false);
     }
     if (fxMod)
     {
@@ -1233,9 +1246,9 @@ void ModuleUnit::paint (juce::Graphics& g)
         const bool on = isActive();
         const juce::Point<float> pc ((float) getWidth() - 83.f, 13.f);
         g.setColour (juce::Colours::black.withAlpha (th.dark ? 0.5f : 0.22f)); g.fillEllipse (pc.x - 8.5f, pc.y - 7.5f, 17.f, 17.f);
-        g.setGradientFill (juce::ColourGradient (on ? C (th.led).brighter (0.6f) : C (th.keyHi), pc.x, pc.y - 8.f, on ? C (th.led).darker (0.3f) : C (th.keyLo), pc.x, pc.y + 8.f, false));
+        g.setGradientFill (juce::ColourGradient (on ? mc.brighter (0.6f) : C (th.keyHi), pc.x, pc.y - 8.f, on ? mc.darker (0.3f) : C (th.keyLo), pc.x, pc.y + 8.f, false));
         g.fillEllipse (pc.x - 8.f, pc.y - 8.f, 16.f, 16.f);
-        if (on) { g.setColour (C (th.led).withAlpha (0.35f)); g.drawEllipse (pc.x - 10.f, pc.y - 10.f, 20.f, 20.f, 2.f); }
+        if (on) { g.setColour (mc.withAlpha (0.35f)); g.drawEllipse (pc.x - 10.f, pc.y - 10.f, 20.f, 20.f, 2.f); }
         g.setColour (look::print.withAlpha (0.55f)); g.drawEllipse (pc.x - 8.f, pc.y - 8.f, 16.f, 16.f, 0.9f);
         juce::Path pw; pw.addCentredArc (pc.x, pc.y + 0.5f, 4.2f, 4.2f, 0.f, 0.65f, 5.63f, true); pw.startNewSubPath (pc.x, pc.y - 5.f); pw.lineTo (pc.x, pc.y);
         g.setColour (on ? juce::Colours::white : look::print.withAlpha (0.7f)); g.strokePath (pw, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
@@ -1569,11 +1582,11 @@ ZephyrEditor::ZephyrEditor (ZephyrAudioProcessor& p, juce::String title, juce::S
     viewport.setScrollBarThickness (10);
     addAndMakeVisible (viewport);
     addAndMakeVisible (side);
-    addAndMakeVisible (patchPanel);
+    addChildComponent (patchPanel);                                  // v2c : patchbay retire de l'interface (routage par menus, matrice du synthe)
 
     buildUnits();
 
-    addAndMakeVisible (cablesBtn);                                  // le calque des cables passe par-dessus tout
+    addChildComponent (cablesBtn);
     cablesBtn.setButtonText ("CABLES");
     cablesBtn.setToggleState (true, juce::dontSendNotification);
     cablesBtn.onClick = [this] { patchBay.cablesVisible = cablesBtn.getToggleState(); patchBay.repaint(); };
@@ -1600,7 +1613,7 @@ ZephyrEditor::ZephyrEditor (ZephyrAudioProcessor& p, juce::String title, juce::S
         juce::CallOutBox::launchAsynchronously (std::make_unique<SettingsPanel> (proc), settingsBtn.getScreenBounds(), getTopLevelComponent());
     };
 #endif
-    addAndMakeVisible (patchBay);
+    addChildComponent (patchBay);
 
     setSize (kDesignW, kFxH);
     refreshRack();
@@ -1633,14 +1646,9 @@ ModuleUnit* ZephyrEditor::newUnit (int node, const juce::String& title, int heig
     raw->topTrim = 33;
     u->onRemove = [this, node] { proc.engine.removeFromRack (node); refreshRack(); };
     u->isActive = [this, node] { return (proc.engine.bypassMask.load() & (1u << node)) == 0; };
-    u->onToggleActive = [this, node, raw]
+    u->onToggleActive = [this, node]                                         // v2c : bypass = vrai A/B, les reglages sont conserves
     {
-        const bool wasBypassed = (proc.engine.bypassMask.load() & (1u << node)) != 0;
         proc.engine.bypassMask.fetch_xor (1u << node); lastBypass = proc.engine.bypassMask.load();
-        if (wasBypassed)                                                      // le module s'allume : tous ses potards repartent de leur valeur neutre (jamais un potard reste a fond)
-            for (auto* ch : raw->getChildren())
-                if (auto* k = dynamic_cast<KnobUnit*> (ch))
-                    if (auto* prm = proc.apvts.getParameter (k->getParamId())) prm->setValueNotifyingHost (prm->getDefaultValue());
     };
     rackView.addChildComponent (*raw);
     rackUnits[node] = std::move (u);
@@ -1649,7 +1657,7 @@ ModuleUnit* ZephyrEditor::newUnit (int node, const juce::String& title, int heig
 
 void ZephyrEditor::buildUnits()
 {
-    constexpr int kModH = 158, kCell = 108;
+    constexpr int kModH = 140, kCell = 100;
     auto addSelector = [this] (juce::Component& parent, const char* id, const juce::StringArray& names)
     {
         auto sel = std::make_unique<SegmentSelector> (proc.apvts, id, names);
@@ -1780,11 +1788,13 @@ void ZephyrEditor::buildUnits()
         auto* a = mk (*u, "dlyTime", "TIME"); auto* b = mk (*u, "dlyFb", "FEEDBACK"); auto* c = mk (*u, "dlyTone", "TONE");
         auto* d = mk (*u, "dlyMod", "MOD"); auto* e = mk (*u, "dlyMix", "MIX");
         auto* sync = addSync (*u, "dlySync", a);
+        auto* route = addSelector (*u, "space", juce::StringArray { "SERIAL", "PARALLEL" });
         u->layoutFn = [=] (juce::Rectangle<int> r)
         {
-            mode->setBounds (r.getX(), r.getY() + 4, 330, 36);
-            sync->setBounds (r.getX(), r.getY() + 52, 150, 26);
-            place (r, { a, b, c, d, e }, 350, kCell - 16);
+            mode->setBounds (r.getX(), r.getY() + 2, 330, 34);
+            sync->setBounds (r.getX(), r.getY() + 46, 150, 26);
+            route->setBounds (r.getX() + 160, r.getY() + 42, 170, 30);
+            place (r, { a, b, c, d, e }, 350, kCell - 8);
         };
     }
 
@@ -1794,17 +1804,31 @@ void ZephyrEditor::buildUnits()
         auto* d = mk (*u, "revPre", "PRE-DELAY"); auto* e = mk (*u, "revDamp", "DAMPING"); auto* f = mk (*u, "revMod", "MOTION");
         auto* g2 = mk (*u, "revWidth", "WIDTH"); auto* sh = mk (*u, "revShimmer", "SHIMMER"); auto* lc = mk (*u, "revLowCut", "LOW CUT");
         auto* frz = addToggle (*u, "revFreeze", "FREEZE");
+        auto* route = addSelector (*u, "space", juce::StringArray { "SERIAL", "PARALLEL" });
         u->layoutFn = [=] (juce::Rectangle<int> r)
         {
-            place (r, { a, b, c, d, e, f, g2, sh, lc }, 0, 76);
-            frz->setBounds (r.getX() + 9 * 76 + 14, r.getCentreY() - 17, 110, 34);
+            place (r, { a, b, c, d, e, f, g2, sh, lc }, 0, 84);
+            frz->setBounds (r.getX() + 9 * 84 + 14, r.getY() + 6, 110, 32);
+            route->setBounds (r.getX() + 9 * 84 + 14, r.getY() + 46, 170, 30);
         };
     }
 
     // ---------------- bandeau de modulation (fixe) : sources CV a droite de chaque module
+#if ! ZEPHYR_SYNTH
+    auto addDst = [this] (juce::Component& parent, const char* id)
+    {
+        auto cb = std::make_unique<juce::ComboBox>();
+        if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (proc.apvts.getParameter (id))) cb->addItemList (choice->choices, 1);
+        cb->setScrollWheelEnabled (false);
+        parent.addAndMakeVisible (*cb);
+        comboAtt.push_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (proc.apvts, id, *cb));
+        auto* r = cb.get(); combos.push_back (std::move (cb)); return r;
+    };
     auto strip = [&] (const char* title, const char* prefix, int srcIdx, bool hasSync)
     {
+        juce::ignoreUnused (srcIdx);
         auto* u = newUnit (-1, title, 172, true);
+        auto* dst = addDst (*u, (juce::String (prefix) + "Dst").toRawUTF8());
         const juce::String pre (prefix);
         auto* rate  = mk (*u, (pre + "Rate").toRawUTF8(), "RATE");
         auto* shape = mk (*u, (pre + (pre == "sh" ? "Slew" : "Shape")).toRawUTF8(), pre == "sh" ? "SLEW" : "SHAPE", pre == "sh" ? "0" : "SIN", pre == "sh" ? "10" : "SQR");
@@ -1812,7 +1836,9 @@ void ZephyrEditor::buildUnits()
         juce::ComboBox* sync = hasSync ? addSync (*u, (pre + "Sync").toRawUTF8(), rate) : nullptr;
         u->layoutFn = [=] (juce::Rectangle<int> r)
         {
-            if (sync != nullptr) sync->setBounds (r.getX(), r.getY() + 2, r.getWidth(), 24);
+            const int hw = r.getWidth() / 2 - 3;
+            dst->setBounds (r.getX(), r.getY() + 2, hw, 24);
+            if (sync != nullptr) sync->setBounds (r.getX() + hw + 6, r.getY() + 2, hw, 24);
             auto k = r.withTrimmedTop (30);
             const int cw = k.getWidth() / 3;
             rate->setBounds (k.getX(), k.getY(), cw, k.getHeight());
@@ -1825,9 +1851,11 @@ void ZephyrEditor::buildUnits()
     strip ("SAMPLE & HOLD", "sh", SrcSh, true);
     {   // ENVELOPE FOLLOWER
         auto* u = newUnit (-1, "ENVELOPE FOLLOWER", 172, true);
+        auto* dst = addDst (*u, "envDst");
         auto* a = mk (*u, "envRel", "RELEASE"); auto* b = mk (*u, "envLevel", "LEVEL");
-        u->layoutFn = [=] (juce::Rectangle<int> r) { a->setBounds (r.getX(), r.getY() + 30, r.getWidth() / 2, r.getHeight() - 30); b->setBounds (r.getX() + r.getWidth() / 2, r.getY() + 30, r.getWidth() / 2, r.getHeight() - 30); };
+        u->layoutFn = [=] (juce::Rectangle<int> r) { dst->setBounds (r.getX(), r.getY() + 2, r.getWidth() / 2 - 3, 24); a->setBounds (r.getX(), r.getY() + 30, r.getWidth() / 2, r.getHeight() - 30); b->setBounds (r.getX() + r.getWidth() / 2, r.getY() + 30, r.getWidth() / 2, r.getHeight() - 30); };
     }
+#endif
 
     // ---------------- panneau lateral : tuiles de modules + master + remises a zero + entree/sortie
     for (int n : kTileNodes)
@@ -1835,12 +1863,21 @@ void ZephyrEditor::buildUnits()
         auto b = std::make_unique<juce::TextButton> (nodeName (n));
         b->setClickingTogglesState (false);
         b->getProperties().set ("modCol", (juce::int64) moduleColour (n).getARGB());
-        b->onClick = [this, n] { if (proc.engine.inRack (n)) proc.engine.removeFromRack (n); else proc.engine.addToRack (n); refreshRack(); };
+        b->onClick = [this, n]
+        {
+            if (proc.engine.inRack (n)) { proc.engine.removeFromRack (n); refreshRack(); return; }
+            proc.engine.bypassMask.fetch_and (~(1u << n));
+            if (auto it = rackUnits.find (n); it != rackUnits.end())             // module ajoute : il demarre neutre (jamais un potard a fond)
+                for (auto* ch : it->second->getChildren())
+                    if (auto* k = dynamic_cast<KnobUnit*> (ch))
+                        if (auto* prm = proc.apvts.getParameter (k->getParamId())) prm->setValueNotifyingHost (prm->getDefaultValue());
+            proc.engine.addToRack (n); refreshRack();
+        };
         side.addAndMakeVisible (*b);
         tiles.push_back (std::move (b));
     }
-    side.subtitles.push_back ({ "MASTER", 286 });
-    side.subtitles.push_back ({ "RESET", 516 });
+    side.subtitles.push_back ({ "MASTER", 300 });
+    side.subtitles.push_back ({ "RESET", 556 });
     for (int n = 0; n < kNumNodes; ++n)                                                   // toutes les prises vivent dans le panneau patchbay
     {
         if (n != NOut) patchPanel.audioOut[n] = patchBay.makeJack (patchPanel, JackKind::AudioOut, n);
@@ -1849,17 +1886,19 @@ void ZephyrEditor::buildUnits()
     for (int s = 0; s < kNumSrc; ++s) patchPanel.cvOut[s] = patchBay.makeJack (patchPanel, JackKind::CvOut, s);
     for (int d = 0; d < kNumCv; ++d)  patchPanel.cvIn[d]  = patchBay.makeJack (patchPanel, JackKind::CvIn, d);
     mk (side, "mix", "DRY / WET", "0", "10", CvMix);
-    mk (side, "output", "OUTPUT", "0", "10");
+    mk (side, "output", "OUTPUT", "-24", "+12");
     side.addAndMakeVisible (foot);
+#if ZEPHYR_SYNTH
+    knobById.at ("mix")->setVisible (false); foot.setVisible (false);         // instrument : chaque module a son mix ; pas de bypass global
+#endif
     footAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (proc.apvts, "on", foot);
 
-    clearRackBtn.setButtonText ("VIDER LE RACK");
-    clearPatchBtn.setButtonText ("VIDER LE PATCHBAY");
-    resetBtn.setButtonText (fr ("RESET R\xc3\x89" "GLAGES"));
-    for (auto* b : { &clearRackBtn, &clearPatchBtn, &resetBtn }) side.addAndMakeVisible (*b);
-    clearRackBtn.onClick  = [this] { confirm ("VIDER LE RACK", fr ("Retirer tous les modules du rack ?\nLes r\xc3\xa9" "glages sont conserv\xc3\xa9s."), [this] { proc.clearRack(); refreshRack(); }); };
-    clearPatchBtn.onClick = [this] { confirm ("VIDER LE PATCHBAY", "Retirer tous les cables du patchbay ?", [this] { proc.clearPatchbay(); patchBay.repaint(); }); };
-    resetBtn.onClick      = [this] { confirm (fr ("RESET DES R\xc3\x89" "GLAGES"), fr ("Remettre tous les r\xc3\xa9" "glages des modules \xc3\xa0 leur valeur par d\xc3\xa9" "faut ?\nLe rack et les c\xc3\xa2" "bles sont conserv\xc3\xa9s."), [this] { proc.resetModules(); }); };
+    clearRackBtn.setButtonText ("CLEAR RACK");
+    resetBtn.setButtonText ("RESET FX");
+    for (auto* b : { &clearRackBtn, &resetBtn }) side.addAndMakeVisible (*b);
+    side.addChildComponent (clearPatchBtn);
+    clearRackBtn.onClick  = [this] { confirm ("CLEAR RACK", "Remove every module from the rack?\nTheir settings are kept.", [this] { proc.clearRack(); refreshRack(); }); };
+    resetBtn.onClick      = [this] { confirm ("RESET FX", "Set every effect back to its default?\nThe synth patch and the rack order are kept.", [this] { proc.resetFx(); }); };
 }
 
 // ---------------------------------------------------------------- rack <-> moteur
@@ -2070,6 +2109,11 @@ void ZephyrEditor::resized()
     nextBtn.setBounds (W - 140, 36, 30, 28);
     saveBtn.setBounds (W - 104, 36, 70, 28);
     cablesBtn.setBounds (W - 540, 38, 108, 24);
+#if ZEPHYR_SYNTH
+    const bool hasStrip = false;
+#else
+    const bool hasStrip = true;
+#endif
     themeBtn.setBounds (W - 660, 38, 110, 24);
     themeBtn.setButtonText (look::T().name);
     midiBtn.setBounds (W - 660, 8, 110, 24);
@@ -2077,11 +2121,11 @@ void ZephyrEditor::resized()
     settingsBtn.setBounds (W - 364, 8, 110, 24);
 
     // ---- colonnes : panneau lateral | rack | (bandeau de modulation en bas)
-    const int vpW = W - 170 - 310;
+    const int vpW = W - 170;
     const int top = kHeaderH + 8;
     patchPanel.setBounds (W - 310, top, 300, H - top - 10);
     side.setBounds (10, top, 150, H - top - 10);
-    viewport.setBounds (170, top, vpW - 10, H - top - 8 - 172 - 8);
+    viewport.setBounds (170, top, vpW - 10, H - top - 8 - (hasStrip ? 172 + 8 : 2));
     rackView.setSize (viewport.getMaximumVisibleWidth(), juce::jmax (90, rackView.getHeight()));
     rackView.relayout();
     patchBay.setBounds (getLocalBounds());
@@ -2103,12 +2147,15 @@ void ZephyrEditor::resized()
 
     // ---- panneau lateral
     for (size_t i = 0; i < tiles.size(); ++i) tiles[i]->setBounds (12, 34 + (int) i * 25, 126, 22);
-    knobById.at ("mix")->setBounds (8, 308, 67, 94);
-    knobById.at ("output")->setBounds (75, 308, 67, 94);
-    foot.setBounds (46, 414, 58, 90);
-    clearRackBtn.setBounds (12, 544, 126, 28);
-    clearPatchBtn.setBounds (12, 578, 126, 28);
-    resetBtn.setBounds (12, 612, 126, 28);
+    if (hasStrip)
+    {
+        knobById.at ("mix")->setBounds (8, 326, 67, 94);
+        knobById.at ("output")->setBounds (75, 326, 67, 94);
+        foot.setBounds (46, 432, 58, 90);
+    }
+    else knobById.at ("output")->setBounds (25, 330, 100, 120);
+    clearRackBtn.setBounds (12, 586, 126, 28);
+    resetBtn.setBounds (12, 620, 126, 28);
 
     rebuildFacade();
 }

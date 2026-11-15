@@ -20,7 +20,8 @@ constexpr int kSub = 32;                      // taille du bloc de controle (mod
 enum Node { NIn, NWide, NSat, NColor, NFilter, NPhaser, NComp, NEnsemble, NDelay, NVerb, NStut, NOut, kNumNodes };
 constexpr int kFirstMod = NWide;
 enum Src  { SrcLfo1, SrcLfo2, SrcSh, SrcEnv, kNumSrc };
-enum Cv   { CvDrive, CvWidth, CvPhMix, CvHpf, CvLpf, CvPeak, CvPhRate, CvEnsDepth, CvEnsMix, CvMix, CvShIn, CvShClk, CvStutOn, CvStutLen, CvStutDecay, CvStutPitch, CvStutMix, kNumCv };
+enum Cv   { CvDrive, CvWidth, CvPhMix, CvHpf, CvLpf, CvPeak, CvPhRate, CvEnsDepth, CvEnsMix, CvMix, CvShIn, CvShClk, CvStutOn, CvStutLen, CvStutDecay, CvStutPitch, CvStutMix,
+            CvDlyTime, CvDlyFb, CvDlyMix, CvRevMix, CvRevDecay, kNumCv };          // v2c : delay et reverb modulables
 
 constexpr int kMaxRack = 11;                   // nombre de modules audio posables sur le rack
 
@@ -140,6 +141,7 @@ struct Params
     float revMix = 0.f, revSize = 0.5f, revDecay = 0.6f, revPre = 0.1f, revDamp = 0.4f, revMod = 0.3f, revWidth = 1.f, revShimmer = 0.f, revLowCut = 0.1f;  bool revFreeze = false;
     bool  stutOn = false;  int stutMode = 0, stutDiv = 4, stutFeel = 0;                 // module STUTTER : engage, mode (repeat / reverse / gate / offbeat), division, feeling (droit / triolet / pointe)
     float stutLen = 0.6f, stutDecay = 0.f, stutPitch = 0.5f, stutMix = 1.f;
+    int   spaceMode = 0;                                           // v2c : 0 delay et reverb en serie, 1 en parallele (la reverb ne traite pas les echos)
 };
 
 // ------------------------------------------------------------------ sur-echantillonnage x4 (IIR Butterworth ordre 6)
@@ -828,6 +830,20 @@ private:
         uint32_t activeSrc = 1u << NIn;
         int prev = NIn;
         for (int k = 0; k < rn; ++k) { defSrc[rackOrder[k]] = prev; prev = rackOrder[k]; activeSrc |= 1u << rackOrder[k]; }
+        // parallele : delay et reverb cote a cote dans la chaine, le second recoit l'entree du premier et y ajoute ses echos
+        int parFirst = -1, parSecond = -1;
+        if (p.spaceMode == 1 && active[NDelay] && active[NVerb] && audioIn[NDelay].load() == 0 && audioIn[NVerb].load() == 0)
+        {
+            int iD = -1, iV = -1;
+            for (int k = 0; k < rn; ++k) { if (rackOrder[k] == NDelay) iD = k; if (rackOrder[k] == NVerb) iV = k; }
+            const int a = std::min (iD, iV), b = std::max (iD, iV);
+            const int moved = rackOrder[b];
+            for (int k = b; k > a + 1; --k) rackOrder[k] = rackOrder[k - 1];
+            rackOrder[a + 1] = moved;
+            parFirst = rackOrder[a]; parSecond = moved;
+            prev = NIn;
+            for (int k = 0; k < rn; ++k) { defSrc[rackOrder[k]] = prev; prev = rackOrder[k]; }
+        }
         defSrc[NOut] = prev;
 
         uint32_t srcMask[kNumNodes] {};
@@ -854,10 +870,13 @@ private:
                     for (int c = 0; c < nc; ++c) for (int i = 0; i < n; ++i) in.ch[c][i] += out[s].ch[c][i];
                 }
             if (fed) for (int c = 0; c < nc; ++c) for (int i = 0; i < n; ++i) in.ch[c][i] = 1.25f * std::tanh (0.8f * in.ch[c][i]);
+            if (nd == parFirst) parIn = in;
+            const bool par2 = nd == parSecond;
+            if (par2) in = parIn;
 
             if (nd != NOut && (bypassMask.load() & (1u << nd)) != 0)       // module contourne : le signal passe tel quel
             {
-                out[nd] = in;
+                out[nd] = par2 ? out[parFirst] : in;
                 if (nd == NComp) compGr.store (0.f);
                 done[nd] = true;
                 continue;
@@ -876,6 +895,8 @@ private:
                 case NVerb:     modVerb (in, out[nd], n, nc); break;
                 default:        modOut (in, io, n, nc); break;
             }
+            if (par2)                                                      // ajoute la part "wet" du premier module
+                for (int c = 0; c < nc; ++c) for (int i = 0; i < n; ++i) out[nd].ch[c][i] += out[parFirst].ch[c][i] - parIn.ch[c][i];
             done[nd] = true;
         }
     }
@@ -1095,8 +1116,8 @@ private:
     {
         float t;
         if (p.dlySync > 0) t = divBeats (p.dlySync) * 60.f / (float) curBpm;
-        else               t = 0.02f * std::pow (90.f, clamp01 (p.dlyTime + 0.6f * extS[11]));         // 20 ms .. 1,8 s
-        const float fb = clamp01 (p.dlyFb + 0.6f * extS[12]), mix = clamp01 (p.dlyMix + 0.6f * extS[13]);
+        else               t = 0.02f * std::pow (90.f, clamp01 (U (p.dlyTime, CvDlyTime) + 0.6f * extS[11]));         // 20 ms .. 1,8 s
+        const float fb = clamp01 (U (p.dlyFb, CvDlyFb) + 0.6f * extS[12]), mix = clamp01 (U (p.dlyMix, CvDlyMix) + 0.6f * extS[13]);
         const float* inL = in.ch[0]; const float* inR = in.ch[nc > 1 ? 1 : 0];
         float dummyR[kSub];
         dly.process (inL, inR, o.ch[0], nc > 1 ? o.ch[1] : dummyR, n, nc, p.dlyMode, std::min (2.1f, t), fb * 0.97f, clamp01 (p.dlyTone + 0.6f * extS[29]), clamp01 (p.dlyMod + 0.6f * extS[30]), mix);
@@ -1104,7 +1125,7 @@ private:
 
     void modVerb (const Buf& in, Buf& o, int n, int nc)
     {
-        const float mix = clamp01 (p.revMix + 0.6f * extS[14]), dec = clamp01 (p.revDecay + 0.6f * extS[15]), dmp = clamp01 (p.revDamp + 0.6f * extS[16]);
+        const float mix = clamp01 (U (p.revMix, CvRevMix) + 0.6f * extS[14]), dec = clamp01 (U (p.revDecay, CvRevDecay) + 0.6f * extS[15]), dmp = clamp01 (p.revDamp + 0.6f * extS[16]);
         const float* inL = in.ch[0]; const float* inR = in.ch[nc > 1 ? 1 : 0];
         float dummyR[kSub];
         verb.process (inL, inR, o.ch[0], nc > 1 ? o.ch[1] : dummyR, n, nc, mix, clamp01 (p.revSize + 0.6f * extS[25]), dec, clamp01 (p.revPre + 0.6f * extS[26]), dmp, p.revMod, clamp01 (p.revWidth + 0.6f * extS[28]), clamp01 (p.revShimmer + 0.6f * extS[27]), p.revLowCut, p.revFreeze);
@@ -1183,6 +1204,7 @@ private:
     static constexpr int kPsN = (int) (sizeof (kPs) / sizeof (kPs[0]));
     Params pT; float ps[kPsN] {}, ps1[kPsN] {}; bool psInit = false;
     float eSatTone = 0.5f, eSpread = 0.f, eEnsSpeed = 0.5f;
+    Buf parIn {};
     float dcC = 0, smoothC = 0, dcLp[2] {}, tiltLp[2] {}, tapeLp[2] {};
     float eSatDrive = 0, eSatGain = 1, eWidth = 0, ePhMix = 0, ePhFb = 0, ePhHz = 0.5f, eEnsMix = 0, eEnsDepth = 0.6f;
     float outTarget = 1, mixTarget = 1, outCur = -1, mixCur = -1;

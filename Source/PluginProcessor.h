@@ -55,7 +55,10 @@ public:
     bool saveUserPreset (const juce::String& name, const juce::String& category);
     bool loadUserPreset (const juce::String& name);
     bool deleteUserPreset (const juce::String& name);
-    void resetModules();        // remet tous les reglages par defaut (rack et patchbay intacts)
+    void resetModules();
+    void resetFx();             // v2c : remet les effets seuls a leur valeur par defaut (le synthe n'est pas touche)
+    void applyModRoutes();      // v2c : routage des sources de modulation du rack (plus de patchbay)
+    void pruneRack();           // v2c : presets du synthe : rack limite aux modules utilises        // remet tous les reglages par defaut (rack et patchbay intacts)
     void clearRack();           // vide le rack : INPUT est relie directement a OUTPUT
     void defaultRack();         // remet les modules dans l'ordre d'origine
     void clearPatchbay();       // retire tous les cables

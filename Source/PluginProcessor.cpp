@@ -7,6 +7,10 @@ namespace
 enum Kind { kFloat, kBool, kChoice };
 struct PDef { const char* id; const char* name; float mn, mx, def; Kind kind; const char* choices; };
 
+// destinations des sources de modulation du rack (Zephyr FX) : index du menu -> entree CV du moteur
+const char* const kModDstChoices = "Off|Sat Drive|Wide Width|Phaser Mix|Phaser Rate|Ensemble Depth|Ensemble Mix|Filter HPF|Filter LPF|Filter Peak|Delay Time|Delay Feedback|Delay Mix|Reverb Mix|Reverb Decay|Dry/Wet";
+const int kModDstCv[16] { -1, zephyr::CvDrive, zephyr::CvWidth, zephyr::CvPhMix, zephyr::CvPhRate, zephyr::CvEnsDepth, zephyr::CvEnsMix, zephyr::CvHpf, zephyr::CvLpf, zephyr::CvPeak,
+                          zephyr::CvDlyTime, zephyr::CvDlyFb, zephyr::CvDlyMix, zephyr::CvRevMix, zephyr::CvRevDecay, zephyr::CvMix };
 const char* const kSyncChoices = "Free|4 bar|2 bar|1 bar|1/2|1/4|1/8|1/16|1/32|1/2T|1/4T|1/8T|1/16T|1/4.|1/8.|1/16.";
 
 // l'ordre ici = l'ordre de lecture dans readParams()
@@ -82,11 +86,18 @@ const PDef kDefs[] = {
     { "stutDecay", "Stutter Decay",    0,   1,  0,    kFloat,  nullptr },
     { "stutPitch", "Stutter Pitch",    0,   1,  0.5f, kFloat,  nullptr },
     { "stutMix",   "Stutter Mix",      0,   1,  1,    kFloat,  nullptr },
+    // v2c : routage delay / reverb, et destinations des sources de modulation du rack (remplacent le patchbay)
+    { "space",     "Delay/Reverb Routing", 0, 1, 0,   kChoice, "Serial|Parallel" },
+    { "lfo1Dst",   "LFO1 Destination", 0,  15,  0,    kChoice, kModDstChoices },
+    { "lfo2Dst",   "LFO2 Destination", 0,  15,  0,    kChoice, kModDstChoices },
+    { "shDst",     "S&H Destination",  0,  15,  0,    kChoice, kModDstChoices },
+    { "envDst",    "Env Destination",  0,  15,  0,    kChoice, kModDstChoices },
 };
 constexpr int kNumDefs = (int) (sizeof (kDefs) / sizeof (kDefs[0]));
 
 // ---- presets d'usine
 #include <map>
+#include <set>
 #if ZEPHYR_SYNTH
 constexpr float kSynthMakeupDb = 4.f;     // rattrapage partiel de la reserve du bus (accords denses propres, notes seules ~2 dB sous la v1)
 #endif
@@ -677,6 +688,8 @@ zephyr::Params ZephyrAudioProcessor::readParams() const
     p.dlyMode = n();  p.dlyTime = f();  p.dlyFb = f();  p.dlyTone = f();  p.dlyMod = f();  p.dlyMix = f();  p.dlySync = n();
     p.revMix = f();  p.revSize = f();  p.revDecay = f();  p.revPre = f();  p.revDamp = f();  p.revMod = f();  p.revWidth = f();  p.revShimmer = f();  p.revLowCut = f();  p.revFreeze = b();
     p.stutOn = b();  p.stutMode = n();  p.stutDiv = n();  p.stutFeel = n();  p.stutLen = f();  p.stutDecay = f();  p.stutPitch = f();  p.stutMix = f();
+    p.spaceMode = n();
+    i += 4;                                                                 // destinations des sources : appliquees dans applyModRoutes()
     jassert (i == kNumDefs);
     return p;
 }
@@ -888,6 +901,7 @@ void ZephyrAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     }
 #endif
     engine.setParams (readParams());
+    applyModRoutes();
     float* io[2] = { buffer.getWritePointer (0), nc > 1 ? buffer.getWritePointer (1) : nullptr };
     engine.process (io, total, nc);
     {
@@ -911,7 +925,7 @@ juce::ValueTree ZephyrAudioProcessor::captureState()
 {
     auto state = apvts.copyState();
     state.setProperty ("lfoV2", 1, nullptr);                               // plage de vitesse des LFO elargie (0.05..300 Hz)
-    state.setProperty ("zv2", 1, nullptr);                                 // Zephyr v2 : filtres circuit (0 MS-10, 1 CEM3320, 2 SEM, 3 Prophet), nouvelles destinations
+    state.setProperty ("zv2", 1, nullptr); state.setProperty ("zv2c", 1, nullptr);                                 // Zephyr v2 : filtres circuit (0 MS-10, 1 CEM3320, 2 SEM, 3 Prophet), nouvelles destinations
     state.setProperty ("patch", juce::String (engine.serializePatch()), nullptr);
     state.setProperty ("rack", juce::String (engine.serializeRack()), nullptr);
     state.setProperty ("bypass", (int) engine.bypassMask.load(), nullptr);
@@ -933,6 +947,20 @@ juce::ValueTree ZephyrAudioProcessor::captureState()
 void ZephyrAudioProcessor::applyState (juce::ValueTree state)
 {
     engine.loadPatch (state.getProperty ("patch", "").toString().toStdString());
+#if ! ZEPHYR_SYNTH
+    if (! state.hasProperty ("zv2c"))                                      // ancien patchbay : chaque source garde sa premiere destination
+    {
+        static const char* ids[4] { "lfo1Dst", "lfo2Dst", "shDst", "envDst" };
+        static const int src[4] { zephyr::SrcLfo1, zephyr::SrcLfo2, zephyr::SrcSh, zephyr::SrcEnv };
+        for (int k = 0; k < 4; ++k)
+            for (int m = 1; m < 16; ++m)
+                if (engine.cvIn[kModDstCv[m]].load() & (1u << src[k]))
+                {
+                    for (auto c : state) if (c.hasProperty ("id") && c.getProperty ("id").toString() == ids[k]) c.setProperty ("value", m, nullptr);
+                    break;
+                }
+    }
+#endif
     const auto rk = state.getProperty ("rack", "").toString();
     if (rk.isNotEmpty()) engine.loadRack (rk.toStdString()); else engine.setDefaultRack();
     engine.bypassMask.store ((uint32_t) (int) state.getProperty ("bypass", 0));
@@ -1095,6 +1123,70 @@ float ZephyrAudioProcessor::modSourceLive (int src) const
 }
 #endif
 
+// v2c : plus de patchbay. Zephyr FX : chaque source (LFO 1, LFO 2, S&H, suiveur d'enveloppe) a un menu de destination.
+// Zephyr (synthe) : la matrice du synthe est le seul systeme de modulation, aucune source du rack n'est routee.
+void ZephyrAudioProcessor::applyModRoutes()
+{
+    uint32_t mask[zephyr::kNumCv] {};
+#if ! ZEPHYR_SYNTH
+    static const char* ids[4] { "lfo1Dst", "lfo2Dst", "shDst", "envDst" };
+    static const int src[4] { zephyr::SrcLfo1, zephyr::SrcLfo2, zephyr::SrcSh, zephyr::SrcEnv };
+    for (int k = 0; k < 4; ++k)
+    {
+        const int d = kModDstCv[juce::jlimit (0, 15, juce::roundToInt (apvts.getRawParameterValue (ids[k])->load()))];
+        if (d >= 0) mask[d] |= 1u << src[k];
+    }
+#endif
+    for (int d = 0; d < zephyr::kNumCv; ++d) if (engine.cvIn[d].load() != mask[d]) engine.cvIn[d].store (mask[d]);
+    for (int nd = 0; nd < zephyr::kNumNodes; ++nd) if (engine.audioIn[nd].load() != 0) engine.audioIn[nd].store (0);
+}
+
+void ZephyrAudioProcessor::resetFx()
+{
+    for (const auto& d : kDefs)
+        if (juce::String (d.id) != "on")
+            if (auto* prm = apvts.getParameter (d.id)) prm->setValueNotifyingHost (prm->getDefaultValue());
+}
+
+// presets du synthe : le rack ne garde que les modules qui servent (reglage non neutre ou destination de la matrice)
+void ZephyrAudioProcessor::pruneRack()
+{
+#if ZEPHYR_SYNTH
+    auto v = [this] (const char* id) { return apvts.getRawParameterValue (id)->load(); };
+    auto nz = [] (float x) { return std::fabs (x) > 1e-4f; };
+    std::set<int> used;
+    for (int i = 1; i <= kSlots; ++i)
+    {
+        const juce::String q ("s_slot" + juce::String (i));
+        const int dst = juce::roundToInt (v ((q + "Dst").toRawUTF8())), src = juce::roundToInt (v ((q + "Src").toRawUTF8()));
+        if (src <= 0 || dst <= 0) continue;
+        if (dst == MdSatDrive || dst == MdSatTone) used.insert (NSat);
+        if (dst == MdEqLow || dst == MdEqMid || dst == MdEqAir) used.insert (NColor);
+        if (dst == MdFxHpf || dst == MdFxLpf || dst == MdFxPeak) used.insert (NFilter);
+        if (dst == MdCompAmt) used.insert (NComp);
+        if (dst == MdPhMix || dst == MdPhRate || dst == MdPhFb) used.insert (NPhaser);
+        if (dst == MdEnsMix || dst == MdEnsDepth || dst == MdEnsSpeed) used.insert (NEnsemble);
+        if (dst >= MdStutOn && dst <= MdStutMix) used.insert (NStut);
+        if (dst == MdDlyTime || dst == MdDlyFb || dst == MdDlyMix || dst == MdDlyTone || dst == MdDlyMod) used.insert (NDelay);
+        if (dst == MdRevMix || dst == MdRevDecay || dst == MdRevDamp || dst == MdRevSize || dst == MdRevPre || dst == MdRevShimmer || dst == MdRevWidth) used.insert (NVerb);
+        if (dst == MdWideWidth || dst == MdWideSpread) used.insert (NWide);
+    }
+    if (nz (v ("satDrive")) || nz (v ("satTone") - 0.5f)) used.insert (NSat);
+    if (nz (v ("low")) || nz (v ("mid")) || nz (v ("high"))) used.insert (NColor);
+    if (nz (v ("hpf")) || nz (v ("lpf") - 1.f)) used.insert (NFilter);
+    if (juce::roundToInt (v ("compType")) != 0) used.insert (NComp);
+    if (nz (v ("phMix"))) used.insert (NPhaser);
+    if (nz (v ("ensMix"))) used.insert (NEnsemble);
+    if (v ("stutOn") > 0.5f) used.insert (NStut);
+    if (nz (v ("dlyMix"))) used.insert (NDelay);
+    if (nz (v ("revMix"))) used.insert (NVerb);
+    if (nz (v ("wideWidth")) || nz (v ("wideSpread")) || nz (v ("wideBass"))) used.insert (NWide);
+    std::vector<int> r;
+    for (int nd : { NSat, NColor, NFilter, NComp, NPhaser, NEnsemble, NStut, NDelay, NVerb, NWide }) if (used.count (nd)) r.push_back (nd);
+    engine.setRack (r);
+#endif
+}
+
 void ZephyrAudioProcessor::resetModules()
 {
     for (const auto& d : kDefs)
@@ -1141,7 +1233,7 @@ void ZephyrAudioProcessor::loadFactoryPreset (int i)
         if (add != 0.f) if (auto* o = apvts.getRawParameterValue ("output")) setParamReal ("output", o->load() + add);
     }
 #if ZEPHYR_SYNTH
-    if (i != 0) applyMacroSet (*this, kFactory[i].category);
+    if (i != 0) { applyMacroSet (*this, kFactory[i].category); pruneRack(); }
 #endif
     presetName = kFactory[i].name;
     presetCategory = kFactory[i].category;

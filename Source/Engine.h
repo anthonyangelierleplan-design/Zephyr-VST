@@ -652,7 +652,9 @@ class Engine
 {
 public:
     std::atomic<float> glow { 0.f }, bright { 0.f };            // le prisme de l'en-tete : niveau de sortie et brillance (part des aigus)
-    std::atomic<float> compGr { 0.f }, gateLed { 1.f };            // vumeter du comp (dB de reduction) ; gateLed garde pour l'interface commune
+    std::atomic<float> compGr { 0.f }, gateLed { 1.f };
+    std::atomic<float> nodeLevel[kNumNodes];                       // v2c : crete a l'entree de chaque module (ecrans animes)
+    std::atomic<float> phPhase { 0.f }, bpmNow { 120.f }, stutPhase { 0.f };            // vumeter du comp (dB de reduction) ; gateLed garde pour l'interface commune
     std::atomic<float> modLed[kNumSrc];
     // entrees venues du synthe : 0-9 CV, 10 phaser feedback, 11-13 delay temps / feedback / mix, 14-16 reverb mix / decay / damp,
     // 17-24 stutter, 25-28 reverb taille / pre-delay / shimmer / largeur, 29-30 delay tone / mod, 31 ensemble speed, 32 comp,
@@ -668,6 +670,7 @@ public:
         for (auto& a : audioIn) a.store (0);
         for (auto& c : cvIn) c.store (0);
         for (auto& m : modLed) m.store (0.f);
+        for (auto& l : nodeLevel) l.store (0.f);
         setRack ({});                                   // au lancement : rack vide (INPUT -> OUTPUT direct)
     }
 
@@ -870,6 +873,11 @@ private:
                     for (int c = 0; c < nc; ++c) for (int i = 0; i < n; ++i) in.ch[c][i] += out[s].ch[c][i];
                 }
             if (fed) for (int c = 0; c < nc; ++c) for (int i = 0; i < n; ++i) in.ch[c][i] = 1.25f * std::tanh (0.8f * in.ch[c][i]);
+            {
+                float pk = 0.f;
+                for (int c = 0; c < nc; ++c) for (int i = 0; i < n; ++i) pk = std::max (pk, std::fabs (in.ch[c][i]));
+                nodePk[nd] = std::max (nodePk[nd], pk);
+            }
             if (nd == parFirst) parIn = in;
             const bool par2 = nd == parSecond;
             if (par2) in = parIn;
@@ -1143,6 +1151,7 @@ private:
         const float len = clamp01 (U (p.stutLen, CvStutLen) + extS[21]), decay = clamp01 (U (p.stutDecay, CvStutDecay) + extS[22]);
         const float pitch = clamp01 (U (p.stutPitch, CvStutPitch) + 0.5f * extS[23]), mix = clamp01 (U (p.stutMix, CvStutMix) + extS[24]);
         const float beats = kBeats[div] * kFeel[feel];
+        stutBeats = beats;
         const int Ls = (int) (beats * 60.f * fs / (float) curBpm);
         stut.process (in, o, n, nc, on, mode, beats, Ls, std::max (0.05f, len), decay, pitch, mix, curPpqStart, curPpqInc);
     }
@@ -1173,6 +1182,9 @@ private:
     // ------------------------------------------------ lumiere du prisme et vumeter
     void finishBlock (int n)
     {
+        for (int k = 0; k < kNumNodes; ++k) { nodeLevel[k].store (nodePk[k]); nodePk[k] = 0.f; }
+        phPhase.store (phaser.ph); bpmNow.store ((float) curBpm);
+        { const double q = ppqNow / (double) std::max (0.0625f, stutBeats); stutPhase.store ((float) (q - std::floor (q))); }
         const float dt = (float) n / fs;
         if (eN > 0)
         {
@@ -1205,6 +1217,7 @@ private:
     Params pT; float ps[kPsN] {}, ps1[kPsN] {}; bool psInit = false;
     float eSatTone = 0.5f, eSpread = 0.f, eEnsSpeed = 0.5f;
     Buf parIn {};
+    float nodePk[kNumNodes] {}, stutBeats = 1.f;
     float dcC = 0, smoothC = 0, dcLp[2] {}, tiltLp[2] {}, tapeLp[2] {};
     float eSatDrive = 0, eSatGain = 1, eWidth = 0, ePhMix = 0, ePhFb = 0, ePhHz = 0.5f, eEnsMix = 0, eEnsDepth = 0.6f;
     float outTarget = 1, mixTarget = 1, outCur = -1, mixCur = -1;

@@ -184,6 +184,256 @@ juce::Path moduleGlyph (int node, juce::Rectangle<float> r)
     return p;
 }
 
+// ---------------------------------------------------------------- ecran anime d'un module (v2c) : dessine l'etat reel du module, en lumiere de sa couleur
+class ModuleScreen : public juce::Component, private juce::Timer
+{
+public:
+    ModuleScreen (ZephyrAudioProcessor& p, int n, std::function<bool()> activeFn) : proc (p), node (n), isOn (std::move (activeFn))
+    {
+        setInterceptsMouseClicks (false, false);
+        startTimerHz (30);
+    }
+    ~ModuleScreen() override { stopTimer(); }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto& th = look::T();
+        const auto b = getLocalBounds().toFloat().reduced (1.f);
+        const juce::Colour mc = moduleColour (node);
+        const float on = isOn() ? 1.f : 0.3f;
+        g.setColour (juce::Colours::black.withAlpha (th.dark ? 0.5f : 0.25f)); g.fillRoundedRectangle (b.translated (0.f, 1.5f), 6.f);
+        g.setGradientFill (juce::ColourGradient (C (th.screenBg).brighter (0.08f), 0.f, b.getY(), C (th.screenBg).darker (0.4f), 0.f, b.getBottom(), false));
+        g.fillRoundedRectangle (b, 6.f);
+        {
+            juce::Graphics::ScopedSaveState ss (g);
+            g.reduceClipRegion (b.reduced (2.f).toNearestInt());
+            g.setColour (mc.withAlpha (0.07f));                                                       // trame
+            for (float x = b.getX() + 12.f; x < b.getRight(); x += 18.f) g.drawVerticalLine ((int) x, b.getY(), b.getBottom());
+            for (float y = b.getY() + 9.f; y < b.getBottom(); y += 18.f) g.drawHorizontalLine ((int) y, b.getX(), b.getRight());
+            const auto area = b.reduced (b.getWidth() * 0.07f, b.getHeight() * 0.16f).translated (0.f, -3.f);
+            drawContent (g, area, mc, on);
+            g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.10f), b.getX(), b.getY(), juce::Colours::white.withAlpha (0.f), b.getX(), b.getY() + b.getHeight() * 0.45f, false));
+            g.fillRect (b);                                                                            // reflet de la vitre
+            g.setColour (mc.withAlpha (0.75f * on));
+            g.setFont (font (8.5f).withExtraKerningFactor (0.18f));
+            g.drawText (moduleCode (node), b.toNearestInt().reduced (8, 4), juce::Justification::bottomRight, false);
+        }
+        g.setColour (look::print.withAlpha (th.dark ? 0.35f : 0.45f)); g.drawRoundedRectangle (b, 6.f, 1.2f);
+    }
+
+private:
+    ZephyrAudioProcessor& proc;
+    int node;
+    std::function<bool()> isOn;
+    float t = 0.f, env = 0.f, lastLvl = 0.f, burst = 99.f, ripple = 99.f, grShown = 0.f;
+
+    float P (const char* id) const { if (auto* v = proc.apvts.getRawParameterValue (id)) return v->load(); return 0.f; }
+
+    static void glow (juce::Graphics& g, const juce::Path& p, juce::Colour c, float on, float w = 1.6f)
+    {
+        g.setColour (c.withAlpha (0.16f * on)); g.strokePath (p, juce::PathStrokeType (w + 7.f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (c.withAlpha (0.35f * on)); g.strokePath (p, juce::PathStrokeType (w + 3.f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (c.brighter (0.6f).withAlpha (0.95f * on)); g.strokePath (p, juce::PathStrokeType (w, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+    // courbe y = f(t), t dans [0,1], f dans [-1,1]
+    static juce::Path curve (juce::Rectangle<float> r, const std::function<float (float)>& f, int N = 96)
+    {
+        juce::Path p;
+        for (int i = 0; i <= N; ++i)
+        {
+            const float u = (float) i / (float) N;
+            const juce::Point<float> q (r.getX() + u * r.getWidth(), r.getCentreY() - juce::jlimit (-1.f, 1.f, f (u)) * r.getHeight() * 0.5f);
+            if (i == 0) p.startNewSubPath (q); else p.lineTo (q);
+        }
+        return p;
+    }
+
+    void timerCallback() override
+    {
+        static const bool force = juce::SystemStats::getEnvironmentVariable ("ZEPHYR_ANIM_TEST", {}).isNotEmpty();   // rendu hors ecran (captures, video)
+        if (! isShowing() && ! (force && isVisible() && getParentComponent() != nullptr && getParentComponent()->isVisible())) return;
+        const float dt = 1.f / 30.f;
+        t += dt;
+        const float lvl = proc.engine.nodeLevel[node].load();
+        if (lvl > lastLvl * 1.6f + 0.02f && lvl > 0.05f) { burst = 0.f; ripple = 0.f; }               // attaque : nouvelle salve d'echos / onde
+        lastLvl = lvl;
+        env += (lvl - env) * (lvl > env ? 0.5f : 0.08f);
+        burst += dt; ripple += dt;
+        grShown += (proc.engine.compGr.load() - grShown) * 0.3f;
+        if (isOn() || node == zephyr::NPhaser || node == zephyr::NEnsemble) repaint();
+    }
+
+    void drawContent (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour mc, float on)
+    {
+        const float pi = 3.14159265f;
+        auto logF = [] (float u) { return 20.f * std::pow (1000.f, u); };                              // axe des frequences 20 Hz .. 20 kHz
+        switch (node)
+        {
+            case zephyr::NSat:
+            {
+                const float dr = P ("satDrive"), gk = 0.4f + 7.f * dr * dr + 1.5f * dr, tone = P ("satTone");
+                const float sp = 2.f + 0.6f * std::sin (t * 0.7f);
+                glow (g, curve (r, [=] (float u) { return std::tanh (gk * std::sin (u * 2.f * pi * sp + t * 2.f)) / std::tanh (gk) * 0.85f; }),
+                      mc.interpolatedWith (tone > 0.5f ? juce::Colour (0xffffe6b0) : juce::Colour (0xffb0402a), std::fabs (tone - 0.5f) * 1.2f), on);
+                break;
+            }
+            case zephyr::NColor:
+            {
+                const float lo = P ("low") / 12.f, mi = P ("mid") / 12.f, hi = P ("high") / 12.f;
+                auto f = [=] (float u)
+                {
+                    const float fr = logF (u);
+                    const float ls = lo / (1.f + std::pow (fr / 120.f, 2.f)), hs = hi / (1.f + std::pow (9000.f / fr, 2.f));
+                    const float oct = std::log2 (fr / 1100.f), bell = mi * std::exp (-oct * oct / 0.9f);
+                    return 1.3f * (ls + bell + hs);
+                };
+                g.setColour (mc.withAlpha (0.2f * on)); g.drawHorizontalLine ((int) r.getCentreY(), r.getX(), r.getRight());
+                glow (g, curve (r, f), mc, on);
+                break;
+            }
+            case zephyr::NFilter:
+            {
+                const float hu = P ("hpf"), lu = P ("lpf"), hq = P ("hpfPeak"), lq = P ("lpfPeak");
+                const float fh = 20.f * std::pow (250.f, hu), fl = 40.f * std::pow (450.f, lu);
+                auto mag = [] (float x, float q) { const float qq = 0.6f + 6.f * q * q; return 1.f / std::sqrt ((1.f - x * x) * (1.f - x * x) + x * x / (qq * qq)); };
+                auto f = [=] (float u)
+                {
+                    const float fr = logF (u);
+                    const float l = mag (fr / fl, lq), hx = fh / fr, hpm = mag (hx, hq);
+                    const float db = 20.f * std::log10 (std::max (1e-4f, l * hpm));
+                    return juce::jlimit (-1.f, 1.f, 0.35f + db / 40.f);
+                };
+                glow (g, curve (r, f, 128), mc, on);
+                break;
+            }
+            case zephyr::NComp:
+            {
+                const float thr = P ("compThresh"), amt = P ("compAmt"), type = P ("compType");
+                const float knee = 1.f - thr * 0.8f, ratio = 1.f + amt * 9.f;
+                juce::Path p;
+                for (int i = 0; i <= 64; ++i)
+                {
+                    const float x = (float) i / 64.f, y = x < knee ? x : knee + (x - knee) / ratio;
+                    const juce::Point<float> q (r.getX() + x * r.getWidth(), r.getBottom() - y * r.getHeight());
+                    if (i == 0) p.startNewSubPath (q); else p.lineTo (q);
+                }
+                glow (g, p, mc, type > 0.5f ? on : on * 0.4f);
+                const float x = juce::jlimit (0.f, 1.f, env * 1.4f), y = x < knee ? x : knee + (x - knee) / ratio;      // point de fonctionnement
+                const juce::Point<float> c (r.getX() + x * r.getWidth(), r.getBottom() - y * r.getHeight());
+                g.setColour (mc.withAlpha (0.35f * on)); g.fillEllipse (c.x - 7.f, c.y - 7.f, 14.f, 14.f);
+                g.setColour (mc.brighter (0.7f).withAlpha (on)); g.fillEllipse (c.x - 3.f, c.y - 3.f, 6.f, 6.f);
+                const float gr = juce::jlimit (0.f, 1.f, grShown / 12.f);                                // barre de reduction de gain
+                g.setColour (mc.withAlpha (0.8f * on)); g.fillRect (r.getRight() + 4.f, r.getY(), 4.f, gr * r.getHeight());
+                break;
+            }
+            case zephyr::NPhaser:
+            {
+                static const int stagesTab[4] { 4, 6, 8, 12 };
+                const int st = stagesTab[juce::jlimit (0, 3, juce::roundToInt (P ("phStages")))];
+                const float ph = proc.engine.phPhase.load(), depth = P ("phDepth"), fb = P ("phFb");
+                const float shift = 0.5f + 0.5f * std::sin (2.f * pi * ph);
+                auto f = [=] (float u)
+                {
+                    const float x = u * (float) st * 0.25f + (shift - 0.5f) * (0.4f + 1.4f * depth);
+                    const float c = std::fabs (std::cos (x * pi));
+                    return 0.7f - (1.1f + 0.5f * fb) * std::pow (c, 10.f + 20.f * (1.f - fb));
+                };
+                glow (g, curve (r, f, 128), mc, P ("phMix") > 0.001f ? on : on * 0.4f);
+                break;
+            }
+            case zephyr::NEnsemble:
+            {
+                const float depth = P ("ensDepth"), speed = P ("ensSpeed"), mix = P ("ensMix");
+                const float sp = 0.4f + 3.f * speed;
+                for (int k = 0; k < 3; ++k)
+                {
+                    const float ph = t * sp + (float) k * 2.094f;
+                    const float a = 0.25f + 0.5f * depth;
+                    glow (g, curve (r, [=] (float u) { return a * std::sin (u * 4.f * pi + ph + 0.6f * depth * std::sin (t * sp * 1.7f + (float) k)); }),
+                          mc, (mix > 0.001f ? on : on * 0.4f) * (0.65f + 0.35f * (float) (k == 0)), 1.3f);
+                }
+                break;
+            }
+            case zephyr::NStut:
+            {
+                static const int divN[7] { 1, 2, 4, 8, 16, 32, 64 };
+                const int dv = divN[juce::jlimit (0, 6, juce::roundToInt (P ("stutDiv")))];
+                const bool engaged = P ("stutOn") > 0.5f;
+                const int n = juce::jlimit (4, 8, dv);
+                const int cur = engaged ? (int) (proc.engine.stutPhase.load() * 0.999f * (float) n) : -1;
+                const float len = P ("stutLen");
+                for (int k = 0; k < n; ++k)
+                {
+                    const float w = r.getWidth() / (float) n, bx = r.getX() + w * (float) k;
+                    juce::Path p; p.addRoundedRectangle (bx + 2.f, r.getY() + r.getHeight() * 0.15f, (w - 4.f) * (0.3f + 0.7f * len), r.getHeight() * 0.7f, 3.f);
+                    glow (g, p, mc, on * (k == cur ? 1.f : (engaged ? 0.35f : 0.5f)), k == cur ? 2.2f : 1.2f);
+                    if (k == cur) { g.setColour (mc.withAlpha (0.25f)); g.fillPath (p); }
+                }
+                break;
+            }
+            case zephyr::NDelay:
+            {
+                const bool sync = P ("dlySync") > 0.5f;
+                const float tm = sync ? 0.35f : P ("dlyTime"), fb = P ("dlyFb");
+                const float sec = sync ? 0.4f : 0.02f * std::pow (90.f, tm);
+                const float gap = 0.06f + 0.22f * tm;
+                const float vis = 0.05f + juce::jlimit (0.f, 1.f, P ("dlyMix"));
+                for (int k = 0; k < 14; ++k)
+                {
+                    const float x = r.getX() + r.getWidth() * (0.02f + gap * (float) k);
+                    if (x > r.getRight()) break;
+                    const float a = std::pow (juce::jmax (0.05f, fb), (float) k), h = r.getHeight() * (k == 0 ? 1.f : 0.95f * a);
+                    if (h < 2.f) break;
+                    const float since = burst - sec * (float) k;                                       // la salve d'echos parcourt l'ecran
+                    const float lit = since >= 0.f ? std::exp (-since * 5.f) : 0.f;
+                    juce::Path p; p.startNewSubPath (x, r.getCentreY() - h * 0.5f); p.lineTo (x, r.getCentreY() + h * 0.5f);
+                    glow (g, p, mc, on * juce::jlimit (0.15f, 1.f, 0.35f * vis + lit), 1.4f + 2.f * lit);
+                }
+                break;
+            }
+            case zephyr::NVerb:
+            {
+                const float size = P ("revSize"), dec = P ("revDecay");
+                const bool frz = P ("revFreeze") > 0.5f;
+                const juce::Colour c = frz ? mc.interpolatedWith (juce::Colour (0xffbfe8ff), 0.55f) : mc;
+                const float cx = r.getX() + r.getWidth() * 0.06f, cy = r.getCentreY();
+                const float life = 0.4f + 4.f * dec;
+                for (int k = 0; k < 7; ++k)
+                {
+                    float rr = r.getWidth() * (0.07f + (0.09f + 0.06f * size) * (float) k);
+                    if (! frz) rr += r.getWidth() * 0.05f * std::fmod (t * (0.25f + 0.4f * size), 1.f);
+                    if (rr > r.getWidth() * 1.05f) break;
+                    const float a = std::asin (juce::jmin (1.f, r.getHeight() * 0.5f / rr));
+                    juce::Path p; p.addCentredArc (cx, cy, rr, rr, 0.f, 1.5708f - a, 1.5708f + a, true);
+                    const float fade = std::exp (-(float) k * 0.9f / life);
+                    const float wave = frz ? 0.f : std::exp (-std::fabs (rr / r.getWidth() - ripple * (0.6f + size)) * 8.f) * std::exp (-ripple / life);
+                    glow (g, p, c, on * juce::jlimit (0.15f, 1.f, 0.3f + 0.5f * fade + wave + 0.6f * env), 1.3f + 1.5f * wave);
+                }
+                break;
+            }
+            case zephyr::NWide:
+            {
+                const float w = P ("wideWidth"), sp = P ("wideSpread"), bass = P ("wideBass");
+                const float half = r.getWidth() * (0.18f + 0.32f * w), cx = r.getCentreX(), cy = r.getCentreY();
+                const float breathe = 1.f + 0.05f * std::sin (t * 1.3f) * (0.3f + sp);
+                juce::Path p;
+                p.startNewSubPath (cx - half * breathe, cy); p.lineTo (cx + half * breathe, cy);
+                for (int sgn : { -1, 1 })
+                {
+                    const float x = cx + (float) sgn * half * breathe, ah = r.getHeight() * 0.28f;
+                    p.startNewSubPath (x - (float) sgn * ah * 0.6f, cy - ah); p.lineTo (x, cy); p.lineTo (x - (float) sgn * ah * 0.6f, cy + ah);
+                }
+                const float cr = r.getHeight() * (0.14f + 0.2f * sp);
+                p.addEllipse (cx - cr, cy - cr, 2.f * cr, 2.f * cr);
+                glow (g, p, mc, on);
+                if (bass > 0.01f) { g.setColour (mc.withAlpha (0.6f * on * bass)); g.fillEllipse (cx - 3.f, cy - 3.f, 6.f, 6.f); }
+                break;
+            }
+            default: break;
+        }
+    }
+};
+
 // potard : jupe moletee sombre, chapeau en aluminium tourne, repere lumineux ; angle < 0 : sans repere
 void drawKnobBody (juce::Graphics& g, juce::Point<float> c, float kr, float angle, float alpha, bool pointer = true)
 {
@@ -1183,36 +1433,6 @@ void ModuleUnit::paint (juce::Graphics& g)
     const bool fxMod = ! fixed && node > zephyr::NIn && node < zephyr::NOut;
     const juce::Colour mc = fxMod ? moduleColour (node) : juce::Colour (th.accent);
     const bool lit = ! fxMod || ! isActive || isActive();
-    if (fxMod && ! collapsed)
-    {
-        // petit ecran du module (comme celui du prisme) : pictogramme lumineux de sa couleur, reference du module
-        const float sh = (float) getHeight() - 44.f, sw = juce::jmin (250.f, sh * 2.3f);
-        const juce::Rectangle<float> scr ((float) getWidth() - (float) jackStripWidth() - sw - 22.f, 32.f, sw, sh);
-        if (sh > 40.f)
-        {
-            g.setColour (juce::Colours::black.withAlpha (th.dark ? 0.5f : 0.25f)); g.fillRoundedRectangle (scr.translated (0.f, 1.5f), 6.f);
-            g.setGradientFill (juce::ColourGradient (C (th.screenBg).brighter (0.08f), 0.f, scr.getY(), C (th.screenBg).darker (0.4f), 0.f, scr.getBottom(), false));
-            g.fillRoundedRectangle (scr, 6.f);
-            {
-                juce::Graphics::ScopedSaveState ss (g);
-                g.reduceClipRegion (scr.reduced (2.f).toNearestInt());
-                g.setColour (mc.withAlpha (0.07f));                                                   // trame de l'ecran
-                for (float x = scr.getX() + 12.f; x < scr.getRight(); x += 18.f) g.drawVerticalLine ((int) x, scr.getY(), scr.getBottom());
-                for (float y = scr.getY() + 9.f; y < scr.getBottom(); y += 18.f) g.drawHorizontalLine ((int) y, scr.getX(), scr.getRight());
-                const auto glyph = moduleGlyph (node, scr.reduced (sw * 0.12f, sh * 0.2f).translated (0.f, -3.f));
-                const float on = lit ? 1.f : 0.3f;
-                g.setColour (mc.withAlpha (0.16f * on)); g.strokePath (glyph, juce::PathStrokeType (9.f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-                g.setColour (mc.withAlpha (0.35f * on)); g.strokePath (glyph, juce::PathStrokeType (4.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-                g.setColour (mc.brighter (0.6f).withAlpha (0.95f * on)); g.strokePath (glyph, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-                g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.10f), scr.getX(), scr.getY(), juce::Colours::white.withAlpha (0.f), scr.getX(), scr.getY() + scr.getHeight() * 0.45f, false));
-                g.fillRect (scr);                                                                      // reflet de la vitre
-                g.setColour (mc.withAlpha (0.75f * on));
-                g.setFont (font (8.5f).withExtraKerningFactor (0.18f));
-                g.drawText (moduleCode (node), scr.toNearestInt().reduced (8, 4), juce::Justification::bottomRight, false);
-            }
-            g.setColour (look::print.withAlpha (th.dark ? 0.35f : 0.45f)); g.drawRoundedRectangle (scr, 6.f, 1.2f);
-        }
-    }
     if (fxMod)
     {
         // pastille de verre de la couleur du module devant le titre (allumee si le module est actif)
@@ -1300,6 +1520,11 @@ void ModuleUnit::resized()
     const int x0 = getWidth() - 14 - jackCols * 58;
     for (const auto& s : jackSlots)
         s.jack->setCentrePosition (x0 + s.col * 58 + 29, 34 + s.row * 38 + 14);
+    if (screen != nullptr)
+    {
+        const int sh = getHeight() - 44, sw = juce::jmin (250, (int) ((float) sh * 2.3f));
+        screen->setBounds (getWidth() - jackStripWidth() - sw - 22, 32, sw, sh);
+    }
     if (layoutFn) layoutFn (getLocalBounds().withTrimmedTop (topTrim).withTrimmedBottom (8).withTrimmedLeft (16).withTrimmedRight (16 + jackStripWidth()));
 }
 
@@ -1650,6 +1875,12 @@ ModuleUnit* ZephyrEditor::newUnit (int node, const juce::String& title, int heig
     {
         proc.engine.bypassMask.fetch_xor (1u << node); lastBypass = proc.engine.bypassMask.load();
     };
+    {
+        auto scr = std::make_unique<ModuleScreen> (proc, node, [this, node] { return (proc.engine.bypassMask.load() & (1u << node)) == 0; });
+        raw->addAndMakeVisible (*scr);
+        raw->screen = scr.get();
+        owned.push_back (std::move (scr));
+    }
     rackView.addChildComponent (*raw);
     rackUnits[node] = std::move (u);
     return raw;

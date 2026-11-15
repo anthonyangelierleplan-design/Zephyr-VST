@@ -271,6 +271,7 @@ public:
     int fullHeight;
     bool fixed, collapsed = false;
     std::function<void (juce::Rectangle<int>)> layoutFn;
+    juce::Component* screen = nullptr;              // v2c : petit ecran anime du module (a droite)
     std::function<void()> onRemove;
     int topTrim = 28;                                // hauteur reservee au bandeau de titre avant la zone des commandes
     std::function<bool()> isActive;                  // false : module contourne (bypass)

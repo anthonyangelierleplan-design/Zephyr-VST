@@ -570,11 +570,14 @@ public:
     float lfoLive (int i) const { return lfoWave (gPhase[i], P.lfo[i].wave, gCur[i]); }   // valeur courante d'un LFO global (affichage des anneaux)
     float lfoHz (int i) const { return hz (i); }                       // cadence de l'arpegiateur = LFO 2
     void setHost (double bpmIn) { bpm = bpmIn > 20.0 ? (float) bpmIn : 120.f; }
-    void setWheel (float w) { wheel = w; }
+    void setWheel (float w) { wheelT = w; }
     void setBend (float semis) { bend = semis; }
     void setChanAT (float a) { chanAT = a; }
-    void setAtResponse (float coef) { atCoef = coef; }                         // reactivite de l'aftertouch : part du chemin parcourue a chaque pas de controle
+    void setAtResponse (float tauSec) { atTau = std::max (0.0005f, tauSec); }  // reactivite de l'aftertouch : constante de temps de chacun des 2 lisseurs
     void setPolyAT (int note, float a) { for (auto& v : voices) if (v.active && v.note == note) v.pat = a; }
+    // MPE (Hydrasynth en mode MPE) : chaque note a sa pression et son pitch bend ; la source POLY AT suit alors la pression de SA note
+    void setPerNoteAT (bool on) { perNoteAT = on; }
+    void setNoteBend (int note, float semis) { for (auto& v : voices) if (v.active && v.note == note) v.nBend = semis; }
 
     // ---- touches : l'interpretation depend du mode d'affectation (POLY, MONO, UNISON, SHARE, CHORD MEMORY) et de HOLD
     void noteOn (int note, float vel)
@@ -631,6 +634,12 @@ public:
             {   // reglages continus lisses (~20 ms) : un reglage qui saute d'un bloc hote a l'autre devient une rampe, plus d'escalier audible
                 const float sc = 1.f - std::exp (-dt / 0.0055f);                                   // deux lisseurs en cascade : une marche (souris, CC MIDI a 7 bits) devient une courbe en S sans cassure
                 for (int i = 0; i < kSmN; ++i) { sm1[i] += (Tg.*kSm[i] - sm1[i]) * sc; sm[i] += (sm1[i] - sm[i]) * sc; P.*kSm[i] = sm[i]; }
+            }
+            {   // aftertouch de canal et molette : lisses a la cadence de controle (avant : une marche par bloc hote -> gresillement des filtres)
+                atSc = 1.f - std::exp (-dt / atTau);
+                chanAT1 += (chanAT - chanAT1) * atSc; chanATs += (chanAT1 - chanATs) * atSc;
+                const float wc = 1.f - std::exp (-dt / 0.006f);
+                wheel1 += (wheelT - wheel1) * wc; wheel += (wheel1 - wheel) * wc;
             }
             for (int i = 0; i < kLfos; ++i)
             {
@@ -692,7 +701,7 @@ private:
         bool active = false; int note = 60; float vel = 1.f; uint64_t age = 0;
         bool gated = false, raw = false; int slot = -1; float uniCents = 0.f, uniPan = 0.f, gainV = 1.f;
         sy::Env aenv, fenv; float pitch = 60.f, ph1 = 0.f, ph2 = 0.f, prev1 = 0.f, prev2 = 0.f, fmT = 0.f;
-        sy::Hp hp; sy::Ms10 ms; sy::Cem3320 cem; sy::SemCkt sck; sy::ProphetSsm pro; bool subFlip = false; float fmK = 1.f; float pat = 0.f, patS = 0.f, rndv = 0.f; float xPrev = 0.f, drvLp = 0.f; sy::OverVar osF, osD, osV; bool cInit = false; float c0[20] {}; float lph[kLfos] {}, lfade[kLfos] {}, lsh[kLfos] {}, lcur[kLfos] {}; float envM[9] {};     // envM : modulation des enveloppes (bloc precedent)
+        sy::Hp hp; sy::Ms10 ms; sy::Cem3320 cem; sy::SemCkt sck; sy::ProphetSsm pro; bool subFlip = false; float fmK = 1.f; float pat = 0.f, pat1 = 0.f, patS = 0.f, nBend = 0.f, nBendS = 0.f, rndv = 0.f; float xPrev = 0.f, drvLp = 0.f; sy::OverVar osF, osD, osV; bool cInit = false; float c0[20] {}; float lph[kLfos] {}, lfade[kLfos] {}, lsh[kLfos] {}, lcur[kLfos] {}; float envM[9] {};     // envM : modulation des enveloppes (bloc precedent)
     };
     static constexpr int kKeys = 16;
     struct Key { int note; float vel; bool phys; uint64_t t; };
@@ -701,11 +710,12 @@ private:
     uint64_t stamp = 0;
     Voice voices[kVoices];
     SynthParams P;
+    bool perNoteAT = false;
     float fs = 44100.f, bpm = 120.f, wheel = 0.f, bend = 0.f, gPhase[kLfos] {}, gSh[kLfos] {}, gCur[kLfos] {};
     float laneT[kLanes] {}, laneC[kLanes] {};
     float vCut[kVoices] {}, vEnv[kVoices] {}, vOff1[kVoices] {}, vOff2[kVoices] {}, walk1[kVoices] {}, walk2[kVoices] {}, walkT1[kVoices] {}, walkT2[kVoices] {};
     uint64_t counter = 0; int lastNote = -1; uint32_t seed = 12345u;
-    float atCoef = 0.4f, chanATs = 0.f;
+    float atTau = 0.012f, atSc = 1.f, chanAT1 = 0.f, chanATs = 0.f, wheelT = 0.f, wheel1 = 0.f;
     float lastVel = 0.8f, fxOut[kFxMod] {}, chanAT = 0.f, lastRnd = 0.f, lastKey = 0.f;
 
     int findKey (int note) const { for (int i = 0; i < nKeys; ++i) if (keys[i].note == note) return i; return -1; }
@@ -832,7 +842,7 @@ private:
         float e = 0.f; for (auto& v : voices) if (v.active) e = std::max (e, v.fenv.v);
         src[MsEnv] = e; src[MsVel] = lastVel; src[MsWheel] = wheel;
         float ae = 0.f, pa = 0.f; for (auto& v : voices) if (v.active) { ae = std::max (ae, v.aenv.v); pa = std::max (pa, v.patS); }
-        src[MsAmpEnv] = ae; src[MsKey] = lastKey; src[MsRandom] = lastRnd; chanATs += (chanAT - chanATs) * atCoef;
+        src[MsAmpEnv] = ae; src[MsKey] = lastKey; src[MsRandom] = lastRnd; 
         src[MsChanAT] = chanATs; src[MsPolyAT] = std::max (pa, chanATs);
         float acc[kFxMod] {};
         for (const auto& sl : P.slot)
@@ -900,8 +910,9 @@ private:
         const float fe = v.fenv.tick (tm (P.fA, v.envM[4]), tm (P.fD, v.envM[5]), std::min (1.f, std::max (0.f, P.fS + v.envM[6])), tm (P.fR, v.envM[7]), fs / (float) kCtl);   // enveloppes cadencees au bloc
         src[MsEnv] = fe; src[MsVel] = v.vel; src[MsWheel] = wheel;
         src[MsAmpEnv] = v.aenv.v; src[MsKey] = std::max (-1.f, std::min (1.f, (v.pitch - 60.f) / 48.f)); src[MsRandom] = v.rndv;
-        v.patS += (v.pat - v.patS) * atCoef;
-        src[MsChanAT] = chanATs; src[MsPolyAT] = std::max (v.patS, chanATs);
+        v.pat1 += (v.pat - v.pat1) * atSc; v.patS += (v.pat1 - v.patS) * atSc;      // aftertouch polyphonique : 2 lisseurs (les pas de 1/127 ne craquent plus dans un filtre resonant)
+        src[MsChanAT] = chanATs; src[MsPolyAT] = perNoteAT ? v.patS : std::max (v.patS, chanATs);
+        v.nBendS += (v.nBend - v.nBendS) * atSc;
         float md[kNumModDst] {};
         for (const auto& s : P.slot)
             if (s.src > 0 && s.dst > 0 && s.amt != 0.f) md[s.dst] += src[s.src] * s.amt / modNative (s.dst);
@@ -919,8 +930,8 @@ private:
         float vibD = P.vib + P.vibWheel * wheel + P.vibAT * src[MsPolyAT];                // vibrato VCO1 : LFO 1, profondeur = potard + molette + aftertouch
         vibD = std::min (1.f, std::max (0.f, vibD));
         const float vibSt = vibD * vibD * 3.f * src[MsLfo1];                              // jusqu'a +/-3 demi-tons, courbe quadratique (reglage fin des petites profondeurs)
-        const float n1 = v.pitch + 12.f * (float) P.oct1 + bend + md[MdPitch] * 12.f + (v.uniCents + dc1) * 0.01f + vibSt;
-        const float n2 = v.pitch + 12.f * (float) P.oct2 + P.tune2 + P.fine2 * 0.01f + bend + md[MdPitch] * 12.f + md[MdPitch2] * 12.f + (v.uniCents + dc2) * 0.01f;
+        const float n1 = v.pitch + 12.f * (float) P.oct1 + bend + v.nBendS + md[MdPitch] * 12.f + (v.uniCents + dc1) * 0.01f + vibSt;
+        const float n2 = v.pitch + 12.f * (float) P.oct2 + P.tune2 + P.fine2 * 0.01f + bend + v.nBendS + md[MdPitch] * 12.f + md[MdPitch2] * 12.f + (v.uniCents + dc2) * 0.01f;
         // rapport de frequence entre les deux VCO (FM) : VCO2 suit VCO1 x rapport, la hauteur propre de VCO2 est ignoree
         const float n2r = P.fmRatio > 0 ? n1 + 12.f * std::log2 (kFmRatios[std::min (11, P.fmRatio)]) + P.fmFine * 0.5f + md[MdPitch2] * 12.f : n2 + P.fmFine * 0.5f;
         const float f1 = 440.f * std::pow (2.f, (n1 - 69.f) / 12.f), f2 = 440.f * std::pow (2.f, (n2r - 69.f) / 12.f);

@@ -776,14 +776,29 @@ void ZephyrAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         synth.setHost (bpm);
         {   // controleurs MIDI : appliques AVANT la lecture des reglages, et une seule fois par bloc (derniere valeur) -> pas de bloc de retard, moins de messages vers l'hote
             int lastCcV[128]; bool seen[128] = {};
+            {   // MPE : notes tenues sur plusieurs canaux, ou canal qui tourne d'une note a l'autre (dans les 30 dernieres secondes)
+                int c0 = -1; bool multi = false;
+                for (int nt = 0; nt < 128 && ! multi; ++nt) if (keyDown[nt] || pedalHeld[nt]) { if (c0 < 0) c0 = noteChan[nt]; else if (noteChan[nt] != c0) multi = true; }
+                for (const auto meta : midi)                                                       // notes de ce bloc (les CC74 MPE arrivent avec leur note)
+                {
+                    const auto m = meta.getMessage();
+                    if (! m.isNoteOn()) continue;
+                    const int ch = m.getChannel();
+                    if (c0 < 0) c0 = ch; else if (ch != c0) multi = true;
+                    if (lastNoteChan > 0 && ch != lastNoteChan && ch != 1) multi = true;
+                }
+                if (multi) lastMultiChan = sampleClock;
+                mpeActive = sampleClock - lastMultiChan < (juce::int64) (30.0 * (getSampleRate() > 0.0 ? getSampleRate() : 48000.0));
+            }
             for (const auto meta : midi)
             {
                 const auto m = meta.getMessage();
+                if (mpeActive && m.getChannel() != 1 && m.isController() && m.getControllerNumber() != 64) continue;    // MPE : les CC des canaux de notes (74 = timbre par note) ne touchent pas aux potards (seul le canal maitre 1 pilote)
                 if (m.isController()) { const int c = m.getControllerNumber(); lastCcV[c] = m.getControllerValue(); seen[c] = true; }
             }
             for (int c = 0; c < 128; ++c) if (seen[c]) handleCC (c, lastCcV[c]);
         }
-        { static const float atC[6] { 1.f, 0.7f, 0.4f, 0.2f, 0.1f, 0.04f }; synth.setAtResponse (atC[juce::jlimit (0, 5, atSpeed.load())]); }
+        { static const float atTau[6] { 0.0015f, 0.005f, 0.012f, 0.03f, 0.07f, 0.16f }; synth.setAtResponse (atTau[juce::jlimit (0, 5, atSpeed.load())]); }   // secondes, par lisseur (2 en cascade)
         synth.setParams (readSynth());
         {   // modulation globale (matrice, pistes) de l'arpegiateur : valeurs du bloc precedent
             const float* gm = synth.fxMod();
@@ -830,7 +845,16 @@ void ZephyrAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
                         if (pedalHeld[nt]) { pedalHeld[nt] = false; keyDown[nt] = false; if (arpOn) arp.noteOff (nt); else evs.push_back ({ pos, 1, nt, 0.f }); }
                 pedal = dn;
             }
-            if (m.isNoteOn()) { keyDown[m.getNoteNumber()] = true; pedalHeld[m.getNoteNumber()] = false; }
+            if (m.isNoteOn())
+            {
+                const int nn = m.getNoteNumber(), ch = m.getChannel();
+                for (int nt = 0; nt < 128; ++nt)
+                    if ((keyDown[nt] || pedalHeld[nt]) && nt != nn && noteChan[nt] != ch) { lastMultiChan = sampleClock + pos; mpeActive = true; break; }
+                if (lastNoteChan > 0 && ch != lastNoteChan && ch != 1) { lastMultiChan = sampleClock + pos; mpeActive = true; }   // canal qui change a chaque note : controleur MPE
+                lastNoteChan = ch;
+                noteChan[nn] = ch; chPress[ch] = 0.f;
+                keyDown[nn] = true; pedalHeld[nn] = false;
+            }
             else if (m.isNoteOff() && pedal && keyDown[m.getNoteNumber()]) { pedalHeld[m.getNoteNumber()] = true; continue; }
             else if (m.isNoteOff()) keyDown[m.getNoteNumber()] = false;
             if (m.isController()) { lastMidiMsg.store ((2 << 16) | (m.getControllerNumber() << 8) | m.getControllerValue()); if (m.getControllerNumber() == 1) wheelShown.store (m.getControllerValue()); }
@@ -851,11 +875,36 @@ void ZephyrAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
             }
             else if (m.isNoteOff())      { if (chordLearn) continue; if (arpOn) arp.noteOff (m.getNoteNumber()); else evs.push_back ({ pos, 1, m.getNoteNumber(), 0.f }); }
             else if (m.isAllNotesOff() || m.isAllSoundOff()) { pedal = false; for (int nt = 0; nt < 128; ++nt) keyDown[nt] = pedalHeld[nt] = false; arp.allOff(); evs.push_back ({ pos, 2, 0, 0.f }); }
-            else if (m.isPitchWheel())   evs.push_back ({ pos, 3, 0, (float) (m.getPitchWheelValue() - 8192) / 8192.f * bendRange });
+            else if (m.isPitchWheel())
+            {
+                const float b = (float) (m.getPitchWheelValue() - 8192) / 8192.f;
+                if (mpeActive && m.getChannel() != 1)                                                  // MPE : bend de la note de ce canal (etendue MPE standard 48 demi-tons)
+                {
+                    for (int nt = 0; nt < 128; ++nt) if ((keyDown[nt] || pedalHeld[nt]) && noteChan[nt] == m.getChannel()) evs.push_back ({ pos, 15, nt, b * 48.f });
+                }
+                else evs.push_back ({ pos, 3, 0, b * bendRange });
+            }
             else if (m.isAftertouch())   evs.push_back ({ pos, 5, m.getNoteNumber(), atShape ((float) m.getAfterTouchValue() / 127.f) });
-            else if (m.isChannelPressure()) evs.push_back ({ pos, 6, 0, atShape ((float) m.getChannelPressureValue() / 127.f) });
+            else if (m.isChannelPressure())
+            {
+                const float v = atShape ((float) m.getChannelPressureValue() / 127.f);
+                const int ch = m.getChannel();
+                chPress[ch] = v;
+                if (mpeActive && ! arpOn)                                                                 // MPE : chaque note suit SA pression (avant : une seule pression qui sautait d'une note a l'autre -> tous les filtres tremblaient)
+                {
+                    float mx = 0.f;
+                    for (int nt = 0; nt < 128; ++nt)
+                        if (keyDown[nt] || pedalHeld[nt])
+                        {
+                            if (noteChan[nt] == ch) evs.push_back ({ pos, 5, nt, v });
+                            mx = std::max (mx, chPress[noteChan[nt]]);
+                        }
+                    evs.push_back ({ pos, 6, 0, mx });                                                  // pression globale (source AFTERTOUCH, effets) : la plus forte, stable
+                }
+                else evs.push_back ({ pos, 6, 0, v });
+            }
             else if (m.isController() && m.getControllerNumber() != 1) {}                // deja traite en debut de bloc
-            else if (m.isController() && m.getControllerNumber() == 1) { evs.push_back ({ pos, 4, 0, (float) m.getControllerValue() / 127.f }); }
+            else if (m.isController() && m.getControllerNumber() == 1 && ! (mpeActive && m.getChannel() != 1)) { evs.push_back ({ pos, 4, 0, (float) m.getControllerValue() / 127.f }); }
         }
         {
             zephyr::Arp::Ev ae[256];
@@ -876,9 +925,11 @@ void ZephyrAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         {
             if (upTo > pos) { synth.process (sl + pos, sr + pos, upTo - pos); pos = upTo; }
         };
+        synth.setPerNoteAT (mpeActive && ! arpOn);
         for (const auto& e : evs)
         {
-            render (e.pos);
+            const bool cont = e.type == 3 || e.type == 4 || e.type == 5 || e.type == 6 || e.type == 15;     // controles continus (lisses) : pas de decoupe a l'echantillon pres
+            render (cont ? e.pos - (e.pos % 32) : e.pos);
             switch (e.type)
             {
                 case 0: synth.noteOn (e.a, e.v); break;
@@ -893,10 +944,12 @@ void ZephyrAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
                 case 9: synth.noteOffRaw (e.a); break;
                 case 5: synth.setPolyAT (e.a, e.v); break;
                 case 6: synth.setChanAT (e.v); break;
+                case 15: synth.setNoteBend (e.a, e.v); break;
                 default: synth.setWheel (e.v); break;
             }
         }
         render (total);
+        sampleClock += total;
         engine.setExtMod (synth.fxMod());
     }
 #endif

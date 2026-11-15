@@ -110,6 +110,8 @@ public:
     float blockMs = 10.f, smV[16] {}; bool smInit = false;
     float bendRange = 2.f;                      // etendue du pitch bend en demi-tons
     bool pedal = false, keyDown[128] = {}, pedalHeld[128] = {};
+    // MPE : canal de chaque note tenue, pression par canal ; mpeActive = des notes tenues sur plusieurs canaux a la fois (dans les 2 dernieres secondes)
+    int noteChan[128] = {}; float chPress[17] = {}; juce::int64 sampleClock = 0, lastMultiChan = -100000000000LL; int lastNoteChan = 0; bool mpeActive = false;
     std::atomic<int> wheelShown { 0 };      // valeur de la molette (CC1) 0..127 pour l'affichage
     std::atomic<int> arpStepShown { -1 };   // pas courant de l'arpegiateur (affichage)
     zephyr::ArpPattern arpPat;               // motif de l'arpegiateur / sequenceur (pas + pistes de modulation), edite par l'interface

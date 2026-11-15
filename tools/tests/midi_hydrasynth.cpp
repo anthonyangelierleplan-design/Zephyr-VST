@@ -115,6 +115,18 @@ int main()
         chk (juce::roundToInt (p.apvts.getRawParameterValue ("s_ftype")->load()) == 3, "v1 Prophet -> Prophet circuit");
         chk (juce::roundToInt (p.apvts.getRawParameterValue ("s_slot1Dst")->load()) == zephyr::MdDrift, "v1 DRIFT -> nouvelle destination DRIFT");
     }
+    // 10. MPE (Hydrasynth en mode MPE) : chaque note sur son canal, pression par canal -> chaque voix suit SA pression ; les CC74 par note ne bougent pas le cutoff
+    {
+        p.loadFactoryPreset (0); p.setParamReal ("s_arpOn", 0.f); p.setParamReal ("s_lpf", 0.45f);
+        juce::MidiBuffer mb; const int nts[3] { 48, 55, 60 };
+        for (int k = 0; k < 3; ++k) { mb.addEvent (juce::MidiMessage::noteOn (2 + k, nts[k], (juce::uint8) 100), k); mb.addEvent (juce::MidiMessage::controllerEvent (2 + k, 74, 10 + 50 * k), k); }
+        rms (p, mb, 2);
+        for (int b = 0; b < 60; ++b) { juce::MidiBuffer m2; for (int k = 0; k < 3; ++k) m2.addEvent (juce::MidiMessage::channelPressureChange (2 + k, 20 + 40 * k), 10 * k); rms (p, m2, 1); }
+        float pt[3] {}; for (auto& v : p.synth.voices) if (v.active) for (int k = 0; k < 3; ++k) if (v.note == nts[k]) pt[k] = v.patS;
+        std::printf ("  MPE : pression par note %.2f / %.2f / %.2f (attendu 0.16 / 0.47 / 0.79), cutoff %.3f\n", pt[0], pt[1], pt[2], p.apvts.getRawParameterValue ("s_lpf")->load());
+        chk (p.mpeActive && std::fabs (pt[0] - 20.f / 127.f) < 0.03f && std::fabs (pt[1] - 60.f / 127.f) < 0.03f && std::fabs (pt[2] - 100.f / 127.f) < 0.03f, "MPE : chaque note suit sa propre pression");
+        chk (std::fabs (p.apvts.getRawParameterValue ("s_lpf")->load() - 0.45f) < 0.002f, "MPE : les CC74 des notes ne touchent pas au cutoff");
+    }
     auto notes = [] (int ratchet, int range, float stepHz)
     {
         zephyr::Arp a; a.prepare (48000.f); zephyr::ArpPattern pat; a.setPattern (&pat);

@@ -123,3 +123,8 @@ Table de données (tools/presets/presets.py) → code C++ → banc de test qui j
 ## Reste a faire sur Zephyr v2
 - Ecouter les 43 presets (niveaux mesures, timbres non ecoutes), en particulier ceux qui etaient sur le Ladder v1 (passes au CEM3320) et le Prophet.
 - CPU High Fidelity avec 12 voix : jusqu'a ~1 coeur du serveur de build sur CEM3320 / Prophet. Pistes : ne pas suréchantillonner les voix en release, ou High Fidelity limite a 8 voix.
+
+## MPE (Zephyr v2d)
+- Symptome : « en polyphonie, le filtre tremble sur toutes les notes avec l'aftertouch », une note seule OK, le lissage de l'aftertouch n'y change rien -> penser MPE : chaque note sur son canal, pression de canal PAR NOTE, CC74 par note, bend par note. Traiter la pression de canal comme globale la fait sauter d'une note a l'autre.
+- Correction : retenir le canal de chaque note ; pression d'un canal -> aftertouch de SA note ; bend d'un canal de note -> sa note (±48) ; CC des canaux de notes ignores pour les potards (canal maitre 1 seulement). Detection automatique (notes tenues sur plusieurs canaux / canal qui tourne), y compris sur les notes du bloc courant (les CC74 arrivent avec la note).
+- Piege de test : getSampleRate() vaut 0 hors hote (prepareToPlay appele a la main) -> toute duree calculee avec elle vaut 0.

@@ -71,6 +71,16 @@ Deux plugins, même design, même dépôt :
 - **Bypass = vrai A/B** (réglages conservés) ; un module ajouté depuis sa tuile démarre à zéro.
 - **Écrans animés** : chaque module affiche son état réel dans sa couleur — courbes d'EQ et de filtre, sinus saturé, transfert du compresseur avec point de fonctionnement et réduction de gain, creux du phaser qui glissent, lignes de l'ensemble, tranches du stutter au tempo, salves d'échos du delay, ondes de la reverb (figées en FREEZE), flèches du wide. 30 images/s, uniquement sur la page EFFECTS et pour les modules actifs.
 
+## v2d (MPE : plus de tremblement des filtres en polyphonie)
+- **Cause** : l'Hydrasynth en mode **MPE** joue chaque note sur son propre canal MIDI, avec sa pression (aftertouch) et son CC74 sur ce canal. Zephyr traitait la pression de canal comme une valeur unique pour tout le synthé : avec plusieurs notes, elle sautait sans cesse de la pression d'une touche à celle d'une autre, et le filtre de **toutes** les voix tremblait. Une seule note : pas de saut, pas de grésillement ; le réglage SETTINGS > aftertouch n'y changeait rien. Le moteur des filtres lui-même était sain (testé avec aftertouch polyphonique lent, rapide, tremblant, dense).
+- **Correction** : détection automatique du MPE (notes tenues sur plusieurs canaux, ou canal qui change à chaque note). Alors :
+  - chaque note suit **sa propre pression** (vrai aftertouch polyphonique) ; la source AFTERTOUCH globale prend la plus forte pression, stable ;
+  - le **pitch bend** d'un canal de note ne touche que sa note (étendue MPE ±48 demi-tons) ; celui du canal 1 reste global ;
+  - les **CC des canaux de notes** (CC74 « timbre » par note) ne pilotent plus les potards : seul le canal maître 1 le fait (sustain accepté partout).
+  - Avec un clavier classique (un seul canal) rien ne change.
+- Les contrôles continus (pression, bend, molette) ne découpent plus le rendu à l'échantillon près (au plus tous les 32 échantillons) : moins de charge avec un flux MIDI dense.
+- Test : `tools/tests/midi_hydrasynth.cpp` (MPE : chaque note suit sa pression, CC74 sans effet sur le cutoff) ; jeu MPE identique à l'échantillon près au même jeu en aftertouch polyphonique.
+
 ## Compilation (GitHub Actions)
 Chaque push sur `main` lance le build Windows et publie `Zephyr-VST3-Windows.zip` dans la Release **latest** du dépôt.
 Dézipper et copier `Zephyr.vst3` et `Zephyr FX.vst3` dans `C:\Program Files\Common Files\VST3` (remplacer la v1 : mêmes identifiants, les projets se rouvrent).

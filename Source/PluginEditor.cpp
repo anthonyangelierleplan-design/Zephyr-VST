@@ -251,6 +251,7 @@ private:
     void timerCallback() override
     {
         static const bool force = juce::SystemStats::getEnvironmentVariable ("ZEPHYR_ANIM_TEST", {}).isNotEmpty();   // rendu hors ecran (captures, video)
+        if (! look::fxPageShown && ! force) return;
         if (! isShowing() && ! (force && isVisible() && getParentComponent() != nullptr && getParentComponent()->isVisible())) return;
         const float dt = 1.f / 30.f;
         t += dt;

@@ -900,6 +900,7 @@ void SynthEditor::showTab (int t)
 {
     if (synthPanel != nullptr) synthPanel->setVisible (t == 0);
     if (arpPanel != nullptr) arpPanel->setVisible (t == 1);
+    look::fxPageShown = t == 2;
     fx.repaint();
 }
 

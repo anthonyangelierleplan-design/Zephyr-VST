@@ -36,7 +36,8 @@ inline const Theme kThemes[3] {
 };
 constexpr int kNumThemes = 3;
 inline int themeIdx = 0;
-inline bool showMidi = false;                    // bouton MIDI de l'en-tete : affiche les etiquettes CC sur les potards assignes
+inline bool showMidi = false;
+inline bool fxPageShown = true;                  // v2c : la page EFFECTS est visible (les ecrans animes ne dessinent que dans ce cas)                    // bouton MIDI de l'en-tete : affiche les etiquettes CC sur les potards assignes
 inline const Theme& T() { return kThemes[themeIdx < 0 || themeIdx >= kNumThemes ? 0 : themeIdx]; }
 inline juce::Colour paint  { 0xffc6cdd7 };       // fond des plaques (suit le theme)
 inline juce::Colour print  { 0xff13233a };       // serigraphie (suit le theme)

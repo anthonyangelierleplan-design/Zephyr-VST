@@ -62,6 +62,15 @@ Deux plugins, même design, même dépôt :
 - Niveaux : les presets d'usine (et une nouvelle instance) remontent la sortie de 4 dB ; écart moyen avec la v1 −1,6 dB, crête maximale −7,5 dBFS. Les projets déjà sauvegardés en v2 sonnent 6 dB plus bas : remonter OUTPUT.
 - **Modules FX personnalisés** : chaque module prend une couleur du spectre du prisme (du rouge de la saturation au violet de la reverb, magenta pour le stereo wide), une pastille de verre allumée quand il est actif, un filet lumineux sous le titre, un grand pictogramme gravé dans la plaque (sinus saturé, courbe d'EQ, passe-bas résonant, peigne du phaser, coude du compresseur, trois lignes de l'ensemble, tranches du stutter, échos qui s'éteignent, ondes de la reverb, flèche stéréo) et une référence gravée (Z-1 SAT … Z-10 WIDE). Les tuiles MODULES portent la même couleur.
 
+## v2c (section FX réorganisée, écrans animés)
+- **Patchbay retiré.** Zephyr (synthé) : la matrice du synthé est l'unique système de modulation des effets (anneaux visibles sur les potards). Zephyr FX : chaque source (LFO 1, LFO 2, S&H, suiveur d'enveloppe) a un menu de destination ; destinations : saturation, wide, phaser, ensemble, filtre, **delay time / feedback / mix**, **reverb mix / decay**, dry/wet. Les câbles de modulation des anciens projets Zephyr FX sont convertis ; les câbles audio ne sont plus repris (chaîne normale du rack).
+- **SERIAL / PARALLEL** (sur le delay et la reverb) : en parallèle, la reverb reçoit le même signal que le delay et les deux s'additionnent (la reverb ne traite pas les échos).
+- **Rack pleine largeur**, modules moins hauts (5 visibles), un seul ordre partout (spectre : saturation → wide), tuiles colorées.
+- **Presets du synthé** : le rack ne garde que les modules utilisés (réglage non neutre ou cible d'une macro / de la matrice).
+- **Colonne de gauche** : OUTPUT seul dans le synthé (DRY/WET et ON restent dans Zephyr FX), CLEAR RACK, **RESET FX** (ne touche plus au synthé). Textes en anglais.
+- **Bypass = vrai A/B** (réglages conservés) ; un module ajouté depuis sa tuile démarre à zéro.
+- **Écrans animés** : chaque module affiche son état réel dans sa couleur — courbes d'EQ et de filtre, sinus saturé, transfert du compresseur avec point de fonctionnement et réduction de gain, creux du phaser qui glissent, lignes de l'ensemble, tranches du stutter au tempo, salves d'échos du delay, ondes de la reverb (figées en FREEZE), flèches du wide. 30 images/s, uniquement sur la page EFFECTS et pour les modules actifs.
+
 ## Compilation (GitHub Actions)
 Chaque push sur `main` lance le build Windows et publie `Zephyr-VST3-Windows.zip` dans la Release **latest** du dépôt.
 Dézipper et copier `Zephyr.vst3` et `Zephyr FX.vst3` dans `C:\Program Files\Common Files\VST3` (remplacer la v1 : mêmes identifiants, les projets se rouvrent).

@@ -87,6 +87,9 @@ constexpr int kNumDefs = (int) (sizeof (kDefs) / sizeof (kDefs[0]));
 
 // ---- presets d'usine
 #include <map>
+#if ZEPHYR_SYNTH
+constexpr float kSynthMakeupDb = 4.f;     // rattrapage partiel de la reserve du bus (accords denses propres, notes seules ~2 dB sous la v1)
+#endif
 using namespace zephyr;
 #if ZEPHYR_SYNTH
 static_assert (zephyr::Engine::kExt <= zephyr::kFxMod && zephyr::kLanes == zephyr::kArpLanes, "entrees de modulation des effets et pistes : moteur, synthe et arpegiateur doivent correspondre");
@@ -531,6 +534,7 @@ ZephyrAudioProcessor::ZephyrAudioProcessor()
     mapDirty.store (false);
 #if ZEPHYR_SYNTH
     engine.setRack ({ NEnsemble, NDelay, NVerb });                       // nouvelle instance = comme le preset Init : ensemble + delay + reverb (mix a zero)
+    setParamReal ("output", -6.f + kSynthMakeupDb);
 #endif
 }
 
@@ -1125,9 +1129,16 @@ void ZephyrAudioProcessor::loadFactoryPreset (int i)
         static const std::map<juce::String, float> trimDb {
             { "Glass Cathedral", 1.8f }, { "Polaris Chords", 1.5f }, { "Cello Light", 2.f }, { "Wurli Gold", -1.8f }, { "Electric Grand", 1.2f },
             { "Crystal Bell", 2.4f }, { "Poly-Mod Bell", 2.3f }, { "Golden Brass", -3.f }, { "Prophecy Sync", 2.1f }, { "Satin Bass", -3.f },
-            { "Moon Ladder", -3.6f }, { "Crystal Cascade", 2.3f }, { "Frozen Time", 2.1f }, { "Halo Choir", 2.f } };
-        const auto it = trimDb.find (kFactory[i].name);
-        if (it != trimDb.end()) if (auto* o = apvts.getRawParameterValue ("output")) setParamReal ("output", o->load() + it->second);
+            { "Moon Ladder", -3.6f }, { "Crystal Cascade", 2.3f }, { "Frozen Time", 2.1f }, { "Halo Choir", 2.f },
+            { "Prism Sequence", 3.f }, { "Gossamer", 3.f } };
+        float add = 0.f;
+        if (const auto it = trimDb.find (kFactory[i].name); it != trimDb.end()) add += it->second;
+#if ZEPHYR_SYNTH
+        add += kSynthMakeupDb;                                                          // v2b : le bus du synthe garde 6 dB de reserve pour la polyphonie
+        if (juce::String (kFactory[i].name) == "Opto Glow") add -= 3.5f;                 // le comp rattrape deja le niveau
+        else if (juce::String (kFactory[i].name) == "Wide & Bright") add -= 2.f;
+#endif
+        if (add != 0.f) if (auto* o = apvts.getRawParameterValue ("output")) setParamReal ("output", o->load() + add);
     }
 #if ZEPHYR_SYNTH
     if (i != 0) applyMacroSet (*this, kFactory[i].category);

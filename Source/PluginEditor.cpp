@@ -112,6 +112,78 @@ void drawKey (juce::Graphics& g, juce::Rectangle<float> r, bool pressed, bool ho
 }
 juce::Colour keyText (bool on) { return on ? juce::Colours::white : look::print.withAlpha (0.92f); }
 
+// ---------------------------------------------------------------- identite des modules FX : une couleur du spectre du prisme par module
+// (ordre du rack par defaut : du rouge au violet, comme la lumiere qui sort du prisme de l'en-tete) + un grand pictogramme grave
+juce::Colour moduleColour (int node)
+{
+    juce::uint32 c = 0;
+    switch (node)
+    {
+        case zephyr::NSat:      c = 0xffff5a3c; break;   // rouge orange
+        case zephyr::NColor:    c = 0xffff9a2e; break;   // orange
+        case zephyr::NFilter:   c = 0xffffcf33; break;   // jaune
+        case zephyr::NComp:     c = 0xff8fdc4a; break;   // vert tendre
+        case zephyr::NPhaser:   c = 0xff2fd0a8; break;   // turquoise
+        case zephyr::NEnsemble: c = 0xff35b9ff; break;   // bleu ciel
+        case zephyr::NStut:     c = 0xff4f7bff; break;   // bleu
+        case zephyr::NDelay:    c = 0xff7a5cff; break;   // indigo
+        case zephyr::NVerb:     c = 0xffb35cff; break;   // violet
+        case zephyr::NWide:     c = 0xffff5cc4; break;   // magenta
+        default:                return juce::Colour (look::T().accent);
+    }
+    const juce::Colour col (c);
+    return look::T().dark ? col : col.withMultipliedSaturation (1.05f).darker (0.18f);
+}
+const char* moduleCode (int node)
+{
+    switch (node)
+    {
+        case zephyr::NSat: return "Z-1  SAT"; case zephyr::NColor: return "Z-2  EQ"; case zephyr::NFilter: return "Z-3  VCF"; case zephyr::NComp: return "Z-4  OPTO";
+        case zephyr::NPhaser: return "Z-5  PHASE"; case zephyr::NEnsemble: return "Z-6  STRINGS"; case zephyr::NStut: return "Z-7  REPEAT"; case zephyr::NDelay: return "Z-8  ECHO";
+        case zephyr::NVerb: return "Z-9  PLATE"; case zephyr::NWide: return "Z-10  WIDE"; default: return "";
+    }
+}
+// pictogramme du module dans r (trace au trait)
+juce::Path moduleGlyph (int node, juce::Rectangle<float> r)
+{
+    juce::Path p;
+    const float x0 = r.getX(), y0 = r.getY(), w = r.getWidth(), h = r.getHeight(), cy = r.getCentreY();
+    auto curve = [&] (std::function<float (float)> f, float xa = 0.f, float xb = 1.f)
+    {
+        const int N = 64;
+        for (int i = 0; i <= N; ++i)
+        {
+            const float t = xa + (xb - xa) * (float) i / (float) N;
+            const juce::Point<float> q (x0 + t * w, cy - juce::jlimit (-1.f, 1.f, f (t)) * h * 0.5f);
+            if (i == 0) p.startNewSubPath (q); else p.lineTo (q);
+        }
+    };
+    switch (node)
+    {
+        case zephyr::NSat:      curve ([] (float t) { return std::tanh (2.8f * std::sin (t * 12.566f)) / std::tanh (2.8f) * 0.8f; }); break;          // sinus arrondi par la saturation
+        case zephyr::NColor:    curve ([] (float t) { auto b = [t] (float c, float wd, float g) { return g * std::exp (-(t - c) * (t - c) / wd); };
+                                                       return b (0.12f, 0.02f, 0.55f) + b (0.5f, 0.012f, -0.6f) + b (0.86f, 0.03f, 0.75f); }); break;      // trois bandes
+        case zephyr::NFilter:   curve ([] (float t) { return 0.3f + 0.5f * std::exp (-(t - 0.55f) * (t - 0.55f) / 0.003f) - (t > 0.55f ? 9.f * (t - 0.55f) * (t - 0.55f) : 0.f); }, 0.f, 0.95f); break;   // passe-bas resonant
+        case zephyr::NComp:     p.startNewSubPath (x0 + w * 0.2f, y0 + h);  p.lineTo (x0 + w * 0.55f, y0 + h * 0.35f);                                   // courbe de transfert avec coude
+                                p.quadraticTo (x0 + w * 0.62f, y0 + h * 0.24f, x0 + w * 0.8f, y0 + h * 0.18f); p.lineTo (x0 + w, y0 + h * 0.08f);
+                                p.startNewSubPath (x0 + w * 0.2f, y0 + h); p.lineTo (x0 + w * 0.2f, y0); break;
+        case zephyr::NPhaser:   curve ([] (float t) { return 0.7f - 1.3f * std::pow (std::fabs (std::cos (t * 3.f * 3.14159f)), 14.f); }); break;   // creux du peigne
+        case zephyr::NEnsemble: for (int k = 0; k < 3; ++k) curve ([k] (float t) { return 0.62f * std::sin (t * 12.566f + (float) k * 2.094f); }); break;  // trois lignes dephasees
+        case zephyr::NStut:     for (int k = 0; k < 5; ++k) { const float bx = x0 + w * (0.02f + 0.2f * (float) k), bh = h * (k < 4 ? 0.8f : 0.4f);        // tranches repetees
+                                                              p.addRoundedRectangle (bx, cy - bh * 0.5f, w * 0.15f, bh, 3.f); } break;
+        case zephyr::NDelay:    for (int k = 0; k < 6; ++k) { const float bx = x0 + w * (0.04f + 0.16f * (float) k), bh = h * 0.95f * std::pow (0.72f, (float) k);   // echos qui s'eteignent
+                                                              p.startNewSubPath (bx, cy - bh * 0.5f); p.lineTo (bx, cy + bh * 0.5f); } break;
+        case zephyr::NVerb:     for (int k = 0; k < 5; ++k) { const float rr = h * (0.18f + 0.2f * (float) k);                                                        // ondes qui s'elargissent
+                                                              p.addCentredArc (x0 + w * 0.12f, cy, rr, rr, 0.f, 0.5f, 2.64f, true); } break;
+        case zephyr::NWide:     p.startNewSubPath (x0, cy); p.lineTo (x0 + w, cy);                                                                         // fleche stereo
+                                p.startNewSubPath (x0 + w * 0.12f, cy - h * 0.3f); p.lineTo (x0, cy); p.lineTo (x0 + w * 0.12f, cy + h * 0.3f);
+                                p.startNewSubPath (x0 + w * 0.88f, cy - h * 0.3f); p.lineTo (x0 + w, cy); p.lineTo (x0 + w * 0.88f, cy + h * 0.3f);
+                                p.addEllipse (x0 + w * 0.5f - h * 0.22f, cy - h * 0.22f, h * 0.44f, h * 0.44f); break;
+        default: break;
+    }
+    return p;
+}
+
 // potard : jupe moletee sombre, chapeau en aluminium tourne, repere lumineux ; angle < 0 : sans repere
 void drawKnobBody (juce::Graphics& g, juce::Point<float> c, float kr, float angle, float alpha, bool pointer = true)
 {
@@ -318,6 +390,15 @@ void ZephyrLookAndFeel::refresh()
 void ZephyrLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour&, bool over, bool down)
 {
     drawKey (g, b.getLocalBounds().toFloat().reduced (1.5f), down || b.getToggleState(), over);
+    if (b.getProperties().contains ("modCol"))                                            // tuile de module : sa couleur du spectre
+    {
+        const juce::Colour mc ((juce::uint32) (juce::int64) b.getProperties()["modCol"]);
+        const auto r = b.getLocalBounds().toFloat().reduced (1.5f);
+        const juce::Rectangle<float> led (r.getX() + 6.f, r.getCentreY() - 3.5f, 7.f, 7.f);
+        if (b.getToggleState()) { g.setColour (mc.withAlpha (0.45f)); g.fillEllipse (led.expanded (2.5f)); }
+        g.setColour (b.getToggleState() ? mc.brighter (0.25f) : mc.withAlpha (0.35f)); g.fillEllipse (led);
+        g.setColour (juce::Colours::black.withAlpha (0.35f)); g.drawEllipse (led, 0.7f);
+    }
 }
 
 void ZephyrLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b, bool, bool down)
@@ -1096,15 +1177,57 @@ void ModuleUnit::paint (juce::Graphics& g)
     const auto b = getLocalBounds().toFloat();
     drawPlate (g, b);
     const auto& th = look::T();
-    const int tx = fixed ? 20 : 40;
+    const bool fxModT = ! fixed && node > zephyr::NIn && node < zephyr::NOut;
+    const int tx = fixed ? 20 : (fxModT ? 46 : 40);
     const int rightRes = fixed ? 20 : (isActive ? 110 : 80);
-    g.setColour (juce::Colour (th.accent));                                              // petite barre d'accent devant le titre
-    g.fillRoundedRectangle ((float) tx - 8.f, 7.f, 3.f, 12.f, 1.5f);
+    const bool fxMod = ! fixed && node > zephyr::NIn && node < zephyr::NOut;
+    const juce::Colour mc = fxMod ? moduleColour (node) : juce::Colour (th.accent);
+    const bool lit = ! fxMod || ! isActive || isActive();
+    if (fxMod && ! collapsed)
+    {
+        // grand pictogramme grave dans la plaque, a droite (sous les commandes : il reste discret)
+        const float gh = juce::jmin ((float) getHeight() - 58.f, 92.f), gw = gh * 1.7f;
+        const juce::Rectangle<float> gr ((float) getWidth() - (float) jackStripWidth() - gw - 34.f, 30.f + ((float) getHeight() - 30.f - gh) * 0.5f, gw, gh);
+        if (gh > 30.f)
+        {
+            const auto glyph = moduleGlyph (node, gr);
+            const juce::PathStrokeType st (6.f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
+            g.setColour (juce::Colours::black.withAlpha (th.dark ? 0.30f : 0.10f)); g.strokePath (glyph, st, juce::AffineTransform::translation (0.f, 1.6f));
+            g.setColour (juce::Colours::white.withAlpha (th.dark ? 0.05f : 0.55f));  g.strokePath (glyph, st, juce::AffineTransform::translation (0.f, -1.f));
+            g.setColour (mc.withAlpha (lit ? (th.dark ? 0.26f : 0.26f) : 0.06f));    g.strokePath (glyph, st);
+        }
+        g.setColour (look::print.withAlpha (0.32f));                                           // reference gravee du module
+        g.setFont (font (9.f).withExtraKerningFactor (0.18f));
+        g.drawText (moduleCode (node), getWidth() - jackStripWidth() - 160, getHeight() - 20, 136, 12, juce::Justification::centredRight, false);
+    }
+    if (fxMod)
+    {
+        // pastille de verre de la couleur du module devant le titre (allumee si le module est actif)
+        const juce::Rectangle<float> jw ((float) tx - 11.f, 6.5f, 8.f, 13.f);
+        if (lit) { g.setColour (mc.withAlpha (0.35f)); g.fillRoundedRectangle (jw.expanded (2.f), 4.f); }
+        g.setGradientFill (juce::ColourGradient (lit ? mc.brighter (0.55f) : mc.withAlpha (0.3f), jw.getX(), jw.getY(), lit ? mc.darker (0.25f) : mc.withAlpha (0.2f), jw.getX(), jw.getBottom(), false));
+        g.fillRoundedRectangle (jw, 3.f);
+        g.setColour (juce::Colours::white.withAlpha (lit ? 0.7f : 0.25f)); g.fillRoundedRectangle (jw.getX() + 1.5f, jw.getY() + 1.5f, 2.f, 5.f, 1.f);
+    }
+    else
+    {
+        g.setColour (juce::Colour (th.accent));                                          // petite barre d'accent devant le titre
+        g.fillRoundedRectangle ((float) tx - 8.f, 7.f, 3.f, 12.f, 1.5f);
+    }
     g.setColour (look::print.withAlpha (0.95f));
     g.setFont (font (12.f).withExtraKerningFactor (0.06f));
     g.drawText (title, tx, 4, getWidth() - tx - rightRes, 18, juce::Justification::centredLeft, false);
-    g.setColour (look::print.withAlpha (0.18f));
-    g.fillRect (tx - 8, 24, getWidth() - (tx - 8) - rightRes, 1);
+    if (fxMod)                                                                           // filet lumineux de la couleur du module sous le titre
+    {
+        const float lw = (float) (getWidth() - (tx - 8) - rightRes);
+        g.setGradientFill (juce::ColourGradient (mc.withAlpha (lit ? 0.9f : 0.3f), (float) tx - 8.f, 0.f, mc.withAlpha (0.f), (float) tx - 8.f + lw, 0.f, false));
+        g.fillRect ((float) tx - 8.f, 23.5f, lw, 2.f);
+    }
+    else
+    {
+        g.setColour (look::print.withAlpha (0.18f));
+        g.fillRect (tx - 8, 24, getWidth() - (tx - 8) - rightRes, 1);
+    }
     if (! fixed && isActive)                                                             // bouton d'activation (bypass) : LED bleue allumee = module actif
     {
         const bool on = isActive();
@@ -1711,6 +1834,7 @@ void ZephyrEditor::buildUnits()
     {
         auto b = std::make_unique<juce::TextButton> (nodeName (n));
         b->setClickingTogglesState (false);
+        b->getProperties().set ("modCol", (juce::int64) moduleColour (n).getARGB());
         b->onClick = [this, n] { if (proc.engine.inRack (n)) proc.engine.removeFromRack (n); else proc.engine.addToRack (n); refreshRack(); };
         side.addAndMakeVisible (*b);
         tiles.push_back (std::move (b));

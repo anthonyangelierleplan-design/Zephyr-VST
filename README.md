@@ -56,6 +56,12 @@ Deux plugins, même design, même dépôt :
 - **Projets Zephyr v1** : filtres et destinations de matrice (SUB, POLY-MOD, DRIFT) migrés à l'ouverture, vitesse des LFO conservée, patch du rack lu (le stutter n'existait pas).
 - **Test MIDI** (`tools/tests/midi_hydrasynth.cpp`) : collisions de CC, CC74, Program Change, sustain, bend, LFO du filtre, CC des effets, macros 16-23, rack de départ, MONO arpège l'accord, POLY tourne sur 4 VCO, l'arpège continue après un changement de mode, aucune note bloquée, migration v1 : **TOUT OK**.
 
+## v2b (polyphonie propre, modules FX personnalisés)
+- **Accords qui « s'entrechoquent » : corrigé.** Mesure : rendues une par une puis additionnées, les voix donnent exactement l'accord (écart −55 à −70 dB) ; les filtres sont donc indépendants. La cause était la sortie du synthé : la somme des 12 voix passait dans une saturation instantanée (tanh), et un accord dense (8 notes, résonance) l'attaquait jusqu'à 2,5 fois sa pleine échelle, ce qui faisait intermoduler les notes entre elles.
+  Correction : 6 dB de réserve sur le bus des voix + un limiteur à gain lissé (attaque 0,8 ms, relâchement 180 ms) au lieu de la tanh, écrêtage doux seulement au-delà. Sur un accord de 8 notes, la part hors harmoniques passe de −20/−35 dB à −38/−63 dB, le niveau des filtres seuls (MS-10 et SEM : −56/−64 dB contre −20/−25 avant).
+- Niveaux : les presets d'usine (et une nouvelle instance) remontent la sortie de 4 dB ; écart moyen avec la v1 −1,6 dB, crête maximale −7,5 dBFS. Les projets déjà sauvegardés en v2 sonnent 6 dB plus bas : remonter OUTPUT.
+- **Modules FX personnalisés** : chaque module prend une couleur du spectre du prisme (du rouge de la saturation au violet de la reverb, magenta pour le stereo wide), une pastille de verre allumée quand il est actif, un filet lumineux sous le titre, un grand pictogramme gravé dans la plaque (sinus saturé, courbe d'EQ, passe-bas résonant, peigne du phaser, coude du compresseur, trois lignes de l'ensemble, tranches du stutter, échos qui s'éteignent, ondes de la reverb, flèche stéréo) et une référence gravée (Z-1 SAT … Z-10 WIDE). Les tuiles MODULES portent la même couleur.
+
 ## Compilation (GitHub Actions)
 Chaque push sur `main` lance le build Windows et publie `Zephyr-VST3-Windows.zip` dans la Release **latest** du dépôt.
 Dézipper et copier `Zephyr.vst3` et `Zephyr FX.vst3` dans `C:\Program Files\Common Files\VST3` (remplacer la v1 : mêmes identifiants, les projets se rouvrent).

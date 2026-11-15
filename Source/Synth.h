@@ -406,6 +406,13 @@ struct SemCkt
 // le retour de resonance passe par un VCA qui s'ecrete lui-meme (la resonance chante sans crier) et une partie du signal d'entree est remontee avec
 // la resonance (les graves restent). Trapeze + Newton 4x4 amorti (retour implicite, ecretage du retour inclus dans la jacobienne). Fait d'apres le schema et
 // la theorie du circuit, PAS calibre sur un enregistrement (aucun disponible).
+// ecretage de securite du bus : lineaire jusqu'a 0,9, puis arrondi vers 1,15 (n'agit que sur les depassements du limiteur)
+inline float busClip (float x)
+{
+    const float a = std::fabs (x);
+    if (a < 0.9f) return x;
+    return (x < 0.f ? -1.f : 1.f) * (0.9f + 0.25f * std::tanh ((a - 0.9f) / 0.25f));
+}
 struct ProphetSsm
 {
     float v[4] {}, t[4] {}; unsigned rs = 777u;
@@ -544,7 +551,7 @@ public:
         fs = sampleRate; msC.prepare (fs); sy::Ms10Tab::get();
         for (auto& v : voices) v = Voice();
         for (int i = 0; i < kLfos; ++i) { gPhase[i] = 0.f; gSh[i] = 0.f; gCur[i] = 0.f; }
-        counter = 0; seed = 12345u;
+        counter = 0; seed = 12345u; busEnv = 0.f; dcL = dcR = 0.f;
         for (int i = 0; i < kVoices; ++i)                                   // chaque "carte voix" a ses petites differences, fixes (derive analogique)
         {
             vCut[i] = rnd(); vEnv[i] = rnd(); vOff1[i] = rnd(); vOff2[i] = rnd();
@@ -650,9 +657,16 @@ public:
                 if (v.active) renderVoice (v, L + pos, R + pos, len, lfoHz, dt);
         }
         const float dcC = 1.f - std::exp (-6.2831853f * 6.f / fs);                              // coupe-continu a 6 Hz : la saturation asymetrique ne laisse plus de composante continue en sortie
+        // bus de sortie : limiteur de crete (gain lisse) au lieu d'une saturation instantanee. Une tanh sur la SOMME des voix
+        // fait intermoduler les notes d'un accord entre elles (les filtres "s'entrechoquent") ; un gain qui varie lentement, non.
+        const float aAtt = 1.f - std::exp (-1.f / (0.0008f * fs)), aRel = 1.f - std::exp (-1.f / (0.18f * fs));
         for (int i = 0; i < n; ++i)
         {
-            float l = std::tanh (L[i] * P.master * 0.7f), r = std::tanh (R[i] * P.master * 0.7f);
+            float l = L[i] * P.master * kBusGain, r = R[i] * P.master * kBusGain;
+            const float pk = std::max (std::fabs (l), std::fabs (r));
+            busEnv += (pk > busEnv ? aAtt : aRel) * (pk - busEnv);
+            const float gr = busEnv > kBusThr ? kBusThr / busEnv : 1.f;
+            l = sy::busClip (l * gr); r = sy::busClip (r * gr);
             dcL += dcC * (l - dcL); dcR += dcC * (r - dcR);
             L[i] = l - dcL; R[i] = r - dcR;
         }
@@ -670,7 +684,9 @@ private:
     static constexpr float kCemTune = 0.075f;                  // l'OTA sature fait baisser la frequence d'auto-oscillation : compensation
     static constexpr float kProTune = 0.075f;
     // (Prophet : sortie compensee pour rester au niveau des autres filtres)
-    SynthParams Tg; float sm[kSmN] {}, sm1[kSmN] {}; float dcL = 0.f, dcR = 0.f; bool smInit = false;
+    SynthParams Tg; float sm[kSmN] {}, sm1[kSmN] {}; float dcL = 0.f, dcR = 0.f, busEnv = 0.f; bool smInit = false;
+    static constexpr float kBusThr = 0.85f;                   // seuil du limiteur de bus
+    static constexpr float kBusGain = 0.35f;                  // reserve pour 12 voix : un accord dense reste lineaire (avant : 0,7 dans une tanh)
     struct Voice
     {
         bool active = false; int note = 60; float vel = 1.f; uint64_t age = 0;

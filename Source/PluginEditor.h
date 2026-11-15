@@ -36,6 +36,7 @@ inline const Theme kThemes[3] {
 };
 constexpr int kNumThemes = 3;
 inline int themeIdx = 0;
+inline bool showMidi = false;                    // bouton MIDI de l'en-tete : affiche les etiquettes CC sur les potards assignes
 inline const Theme& T() { return kThemes[themeIdx < 0 || themeIdx >= kNumThemes ? 0 : themeIdx]; }
 inline juce::Colour paint  { 0xffc6cdd7 };       // fond des plaques (suit le theme)
 inline juce::Colour print  { 0xff13233a };       // serigraphie (suit le theme)
@@ -76,6 +77,11 @@ class DetentSlider : public juce::Slider
 {
 public:
     using juce::Slider::Slider;
+    std::function<bool (const juce::MouseEvent&, int)> intercept;     // phase 0 appui, 1 glisse, 2 relache : renvoie true si le geste est pris en charge (reglage d'un anneau de modulation)
+    void mouseDown (const juce::MouseEvent& e) override { grabbed = intercept && intercept (e, 0); if (! grabbed) juce::Slider::mouseDown (e); }
+    void mouseDrag (const juce::MouseEvent& e) override { if (grabbed) intercept (e, 1); else juce::Slider::mouseDrag (e); }
+    void mouseUp (const juce::MouseEvent& e) override { if (grabbed) { intercept (e, 2); grabbed = false; } else juce::Slider::mouseUp (e); }
+    bool grabbed = false;
     double detent = -1e30;                                   // valeur du cran (hors plage = aucun)
     bool showMark = false;                                   // trait orange sur la piste (curseurs lineaires)
     double snapValue (double v, DragMode mode) override
@@ -92,21 +98,33 @@ public:
     }
 };
 
-class KnobUnit : public juce::Component
+class KnobUnit : public juce::Component, private juce::Timer
 {
 public:
+    ~KnobUnit() override { stopTimer(); }
+    void mouseDown (const juce::MouseEvent&) override;           // clic droit : menu MIDI (assigner / supprimer)
     KnobUnit (juce::AudioProcessorValueTreeState&, const juce::String& id, const juce::String& text,
               const juce::String& lo, const juce::String& hi, int cvIdx = -1);
     void paint (juce::Graphics&) override;
+    void paintOverChildren (juce::Graphics&) override;                // anneaux de modulation
     void resized() override;
     void setCvActive (bool);
+    const juce::String& getParamId() const { return paramId; }
+    void setChoices (const juce::StringArray& names);              // potard cranté : une graduation nommée par choix (paramètre "choice")
 
+    juce::StringArray choices;
     DetentSlider slider;
     juce::String text, loText, hiText;
     int cvIndex;                                     // destination CV associee (ou -1)
     bool cvActive = false;
 private:
+    void timerCallback() override;
     juce::AudioProcessorValueTreeState::SliderAttachment attachment;
+    ZephyrAudioProcessor* proc = nullptr;
+    juce::String paramId;
+    int mapIdx = -1, shownCc = -1; bool shownLearn = false, shownShow = false;
+    int modDst = 0, nMods = 0, ringSlot = -1, hash = 0; float ringStartAmt = 0.f; float dragStartY = 0.f; juce::String dragText;
+    bool modInterceptor (const juce::MouseEvent&, int);
 };
 
 // ---------------------------------------------------------------- boutons-poussoirs (parametre "choice")
@@ -254,19 +272,22 @@ public:
     bool fixed, collapsed = false;
     std::function<void (juce::Rectangle<int>)> layoutFn;
     std::function<void()> onRemove;
+    int topTrim = 28;                                // hauteur reservee au bandeau de titre avant la zone des commandes
+    std::function<bool()> isActive;                  // false : module contourne (bypass)
+    std::function<void()> onToggleActive;
     int currentHeight() const { return collapsed ? 26 : fullHeight; }
 private:
     struct JackSlot { Jack* jack; int col, row; juce::String label; };
     std::vector<JackSlot> jackSlots;
     int jackCols = 0;
     RackView* rackView;
-    enum Region { None, Handle, Collapse, Remove } pressed = None;
+    enum Region { None, Handle, Power, Collapse, Remove } pressed = None;
     Region regionAt (juce::Point<int>) const;
     int grabOffset = 0;
 };
 
 // ---------------------------------------------------------------- le rack (contenu du Viewport)
-class RackView : public juce::Component
+class RackView : public juce::Component, private juce::Timer
 {
 public:
     explicit RackView (ZephyrEditor& e) : owner (e) {}
@@ -279,8 +300,11 @@ public:
     void dragMove (ModuleUnit*, int pointerY, int grabOffsetY);
     void dragEnd (ModuleUnit*);
 private:
+    void timerCallback() override;                              // defilement automatique pendant un deplacement de module
     ZephyrEditor& owner;
     std::vector<ModuleUnit*> order, temp;
+    ModuleUnit* dragU = nullptr;
+    int lastPointerY = 0, dragGrab = 0;
 };
 
 // ---------------------------------------------------------------- panneaux lateraux
@@ -359,7 +383,8 @@ private:
     juce::Image panelTex;
     juce::Random rnd;
     float glowShown = 0.f, brightShown = 0.f;
-    uint32_t lastPatchHash = 0, lastRackHash = 0;
+    int lastPresetSerial = 0;
+    uint32_t lastPatchHash = 0, lastRackHash = 0, lastBypass = 0;
 
     // en-tete
     juce::TextButton prevBtn { "<" }, nextBtn { ">" }, nameBtn, saveBtn { "SAVE" };
@@ -374,7 +399,9 @@ private:
     PatchPanel patchPanel { *this };
     std::unique_ptr<ZephyrDialog> dialog;
     Jack *jackIn = nullptr, *jackOut = nullptr, *jackMix = nullptr;
-    LedToggle cablesBtn;
+    LedToggle cablesBtn, midiBtn;
+    juce::TextButton settingsBtn;                       // synthe : panneau des reglages globaux (qualite, lissage, aftertouch)
+    juce::Label midiMon;
 
     std::vector<std::unique_ptr<KnobUnit>> knobs;
     std::map<std::string, KnobUnit*> knobById;

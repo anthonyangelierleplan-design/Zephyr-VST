@@ -1,6 +1,7 @@
 // ZEPHYR - moteur d'effets semi-modulaire (aucune dependance a JUCE, donc testable hors plugin)
 // Modules : Stereo Wide, Saturation (tape / console / tube), EQ, Filtre, Phaser, Compresseur (opto / glue),
-// Ensemble facon string machine, Delay multimode (tape / ice / ping-pong / digital), Reverb plaque + shimmer.
+// Ensemble facon string machine, Delay multimode (tape / ice / ping-pong / digital), Reverb plaque + shimmer, Stutter / Beat Repeat.
+// Infrastructure partagee avec Orage v20b : bypass par module, reglages lisses en 2 etages, 38 entrees de modulation venues du synthe.
 #pragma once
 #include <algorithm>
 #include <atomic>
@@ -16,12 +17,12 @@ constexpr float kPi = 3.14159265358979f;
 constexpr int kSub = 32;                      // taille du bloc de controle (modulations)
 
 // ------------------------------------------------------------------ topologie du patch
-enum Node { NIn, NWide, NSat, NColor, NFilter, NPhaser, NComp, NEnsemble, NDelay, NVerb, NOut, kNumNodes };
+enum Node { NIn, NWide, NSat, NColor, NFilter, NPhaser, NComp, NEnsemble, NDelay, NVerb, NStut, NOut, kNumNodes };
 constexpr int kFirstMod = NWide;
 enum Src  { SrcLfo1, SrcLfo2, SrcSh, SrcEnv, kNumSrc };
-enum Cv   { CvDrive, CvWidth, CvPhMix, CvHpf, CvLpf, CvPeak, CvPhRate, CvEnsDepth, CvEnsMix, CvMix, CvShIn, CvShClk, kNumCv };
+enum Cv   { CvDrive, CvWidth, CvPhMix, CvHpf, CvLpf, CvPeak, CvPhRate, CvEnsDepth, CvEnsMix, CvMix, CvShIn, CvShClk, CvStutOn, CvStutLen, CvStutDecay, CvStutPitch, CvStutMix, kNumCv };
 
-constexpr int kMaxRack = 10;                   // nombre de modules audio posables sur le rack
+constexpr int kMaxRack = 11;                   // nombre de modules audio posables sur le rack
 
 // durees des divisions de la synchro (en noires) ; 0 = libre
 inline float divBeats (int idx)
@@ -137,6 +138,8 @@ struct Params
     int   lfo1Sync = 0, lfo2Sync = 0, shSync = 0;                  // 0 = libre, sinon index de division (divBeats)
     int   dlyMode = 0;  float dlyTime = 0.4f, dlyFb = 0.35f, dlyTone = 0.6f, dlyMod = 0.3f, dlyMix = 0.f;  int dlySync = 0;
     float revMix = 0.f, revSize = 0.5f, revDecay = 0.6f, revPre = 0.1f, revDamp = 0.4f, revMod = 0.3f, revWidth = 1.f, revShimmer = 0.f, revLowCut = 0.1f;  bool revFreeze = false;
+    bool  stutOn = false;  int stutMode = 0, stutDiv = 4, stutFeel = 0;                 // module STUTTER : engage, mode (repeat / reverse / gate / offbeat), division, feeling (droit / triolet / pointe)
+    float stutLen = 0.6f, stutDecay = 0.f, stutPitch = 0.5f, stutMix = 1.f;
 };
 
 // ------------------------------------------------------------------ sur-echantillonnage x4 (IIR Butterworth ordre 6)
@@ -456,6 +459,88 @@ struct MultiDelay
 };
 
 // ------------------------------------------------------------------ reverb plaque (Dattorro) + shimmer + freeze
+struct Stutter
+{
+    std::vector<float> buf[2];
+    int N = 0, w = 0, loopStart = 0, loopN = 0;
+    bool engaged = false, frozen = false;
+    float rp = 0.f, repGain = 1.f, act = 0.f, gG = 0.f, actC = 0.f, gC = 0.f;
+
+    void prepare (float fs)
+    {
+        N = (int) (fs * 5.f);
+        for (auto& b : buf) b.assign ((size_t) N, 0.f);
+        w = 0; loopStart = 0; loopN = 0; engaged = frozen = false; rp = 0.f; repGain = 1.f; act = 0.f; gG = 0.f;
+        actC = 1.f - std::exp (-1.f / (0.004f * fs)); gC = 1.f - std::exp (-1.f / (0.0012f * fs));
+    }
+    float rd (int c, float pos) const
+    {
+        while (pos < 0.f) pos += (float) N;
+        const int i0 = (int) pos; const float fr = pos - (float) i0;
+        const int a = i0 % N, b = (a + 1) % N;
+        return buf[c][(size_t) a] + (buf[c][(size_t) b] - buf[c][(size_t) a]) * fr;
+    }
+    // mode : 0 beat repeat, 1 reverse, 2 gate, 3 offbeat. beats = duree d'une tranche (noires), Ls = meme duree en echantillons.
+    void process (const Buf& in, Buf& o, int n, int nc, bool on, int mode, float beats, int Ls, float len, float decay, float pitch, float mix, double ppq0, double ppqInc)
+    {
+        const bool loopMode = mode <= 1;
+        const float speed = std::fabs (pitch - 0.5f) < 0.02f ? 1.f : std::pow (2.f, (pitch - 0.5f) * 2.f);
+        Ls = std::max (64, std::min (Ls, N - 4));
+        for (int i = 0; i < n; ++i)
+        {
+            if (on && ! engaged) { engaged = true; repGain = 1.f; rp = -1.f; }
+            if (! on && engaged) { engaged = false; frozen = false; }
+            if (engaged && loopMode)
+            {
+                if (! frozen || loopN != Ls)
+                {
+                    const bool fresh = ! frozen;
+                    frozen = true; loopN = Ls; loopStart = ((w - Ls) % N + N) % N;
+                    if (fresh || rp < 0.f || rp >= (float) Ls) rp = (mode == 1) ? (float) Ls - 1.f : 0.f;
+                }
+            }
+            else if (frozen) frozen = false;
+
+            float dry[2] { in.ch[0][i], in.ch[nc > 1 ? 1 : 0][i] };
+            float wet[2] { dry[0], dry[1] };
+            float gTarget = 1.f;
+            if (engaged)
+            {
+                if (frozen)
+                {
+                    const float L = (float) loopN;
+                    const float edge = std::min (32.f, 0.25f * L);
+                    const float fadeIn = std::min (1.f, std::min (rp, L - rp) / edge);
+                    for (int c = 0; c < 2; ++c) wet[c] = rd (c, (float) loopStart + rp) * fadeIn * repGain;
+                    const float phRep = (mode == 1 ? (L - rp) : rp) / L;
+                    gTarget = phRep < len ? 1.f : 0.f;
+                    rp += (mode == 1 ? -speed : speed);
+                    if (rp >= L) { rp -= L; repGain *= 1.f - 0.5f * decay; }
+                    else if (rp < 0.f) { rp += L; repGain *= 1.f - 0.5f * decay; }
+                }
+                else
+                {
+                    const double q = (ppq0 + (double) i * ppqInc) / (double) beats;
+                    const float ph = (float) (q - std::floor (q));
+                    gTarget = (mode == 2) ? (ph < len ? 1.f : 0.f) : ((ph >= 0.5f && ph < 0.5f + 0.5f * len) ? 1.f : 0.f);
+                }
+            }
+            if (! frozen) { buf[0][(size_t) w] = dry[0]; buf[1][(size_t) w] = dry[1]; if (++w >= N) w = 0; }
+            act += ((engaged ? 1.f : 0.f) - act) * actC;
+            gG += (gTarget - gG) * gC;
+            const float g = gG, k = act * mix;
+            for (int c = 0; c < (nc > 1 ? 2 : 1); ++c)
+            {
+                const float wv = frozen ? wet[c] * g : wet[c] * g;
+                o.ch[c][i] = dry[c] * (1.f - k) + wv * k;
+            }
+            if (act < 1e-4f && ! engaged) for (int c = 0; c < (nc > 1 ? 2 : 1); ++c) o.ch[c][i] = dry[c];
+        }
+        (void) beats;
+    }
+};
+
+
 struct Reverb
 {
     using Dl = Line;
@@ -565,12 +650,16 @@ class Engine
 {
 public:
     std::atomic<float> glow { 0.f }, bright { 0.f };            // le prisme de l'en-tete : niveau de sortie et brillance (part des aigus)
-    std::atomic<float> compGr { 0.f };                          // vumeter du comp (dB de reduction)
+    std::atomic<float> compGr { 0.f }, gateLed { 1.f };            // vumeter du comp (dB de reduction) ; gateLed garde pour l'interface commune
     std::atomic<float> modLed[kNumSrc];
-    static constexpr int kExt = 17;                              // 10 entrees CV + phaser feedback + delay temps / feedback / mix + reverb mix / decay / damp
+    // entrees venues du synthe : 0-9 CV, 10 phaser feedback, 11-13 delay temps / feedback / mix, 14-16 reverb mix / decay / damp,
+    // 17-24 stutter, 25-28 reverb taille / pre-delay / shimmer / largeur, 29-30 delay tone / mod, 31 ensemble speed, 32 comp,
+    // 33 wide spread, 34 sat tone, 35-37 EQ
+    static constexpr int kExt = 38;
     std::atomic<uint32_t> audioIn[kNumNodes], cvIn[kNumCv];     // le patch : masques de bits des sources branchees
 
     std::atomic<int> rackSlot[kMaxRack];                         // ordre des modules sur le rack (-1 = vide)
+    std::atomic<uint32_t> bypassMask { 0 };                      // un bit par module : 1 = module contourne (le signal le traverse sans traitement)
 
     Engine()
     {
@@ -581,7 +670,7 @@ public:
     }
 
     // ---- rack
-    void setDefaultRack() { setRack ({ NSat, NColor, NFilter, NComp, NPhaser, NEnsemble, NDelay, NVerb, NWide }); }
+    void setDefaultRack() { setRack ({ NSat, NColor, NFilter, NComp, NPhaser, NEnsemble, NStut, NDelay, NVerb, NWide }); }
     void setRack (const std::vector<int>& order)
     {
         int k = 0;
@@ -645,7 +734,7 @@ public:
     void clearPatch() { for (auto& a : audioIn) a.store (0); for (auto& c : cvIn) c.store (0); }
     std::string serializePatch() const
     {
-        std::string s = "z1:";
+        std::string s = "z2:";
         for (auto& a : audioIn) s += std::to_string (a.load()) + ",";
         for (auto& c : cvIn)    s += std::to_string (c.load()) + ",";
         return s;
@@ -653,23 +742,25 @@ public:
     void loadPatch (const std::string& s)
     {
         clearPatch();
-        if (s.compare (0, 3, "z1:") != 0) return;
+        const bool z2 = s.compare (0, 3, "z2:") == 0;
+        if (! z2 && s.compare (0, 3, "z1:") != 0) return;
         const char* p = s.c_str() + 3;
-        for (int i = 0; i < (int) kNumNodes + (int) kNumCv; ++i)
+        const int nNodes = z2 ? (int) kNumNodes : 11, nCv = z2 ? (int) kNumCv : 12;      // z1 (Zephyr v1) : avant le stutter
+        for (int i = 0; i < nNodes + nCv; ++i)
         {
             char* end = nullptr;
             const unsigned long v = std::strtoul (p, &end, 10);
             if (end == p) break;
             p = (*end == ',') ? end + 1 : end;
-            if (i < kNumNodes) audioIn[i].store ((uint32_t) v & 0x7FFu);
-            else               cvIn[i - kNumNodes].store ((uint32_t) v & 0xFu);
+            if (i < nNodes) audioIn[(! z2 && i == nNodes - 1) ? (int) NOut : i].store ((uint32_t) v & 0xFFFu);
+            else            cvIn[i - nNodes].store ((uint32_t) v & 0xFu);
         }
     }
 
     void prepare (float sampleRate)
     {
         fs = sampleRate;
-        os.prepare (fs); comp.prepare (fs); wider.prepare (fs); ens.prepare (fs); dly.prepare (fs); verb.prepare (fs); phaser.reset();
+        os.prepare (fs); comp.prepare (fs); wider.prepare (fs); ens.prepare (fs); dly.prepare (fs); verb.prepare (fs); stut.prepare (fs); phaser.reset();
         for (auto& e : extS) e = 0.f;
         dcC = onePoleCoef (12.f, fs);
         smoothC = timeCoef (0.02f, fs);
@@ -684,7 +775,12 @@ public:
         shRng.seed (0x5EEDu);
     }
 
-    void setParams (const Params& in) { p = in; }
+    void setParams (const Params& in)
+    {
+        pT = in; p = in;
+        if (! psInit) { for (int i = 0; i < kPsN; ++i) ps[i] = ps1[i] = in.*kPs[i]; psInit = true; }
+        for (int i = 0; i < kPsN; ++i) p.*kPs[i] = ps[i];
+    }
     void setExtMod (const float* v) { for (int i = 0; i < kExt; ++i) extT[i] = v[i]; }      // modulations venues de la matrice du synthe (kExt valeurs)
 
     void process (float** io, int n, int nc)
@@ -712,6 +808,10 @@ private:
         curPpqInc = curBpm / (60.0 * (double) fs);
         ppqNow += (double) n * curPpqInc;
 
+        {   // reglages continus lisses (2 etages, ~20 ms) : plus d'escalier quand on bouge un potard (souris ou controleur MIDI)
+            const float sc = 1.f - std::exp (-(float) n / fs / 0.0055f);
+            for (int i = 0; i < kPsN; ++i) { ps1[i] += (pT.*kPs[i] - ps1[i]) * sc; ps[i] += (ps1[i] - ps[i]) * sc; p.*kPs[i] = ps[i]; }
+        }
         for (int i = 0; i < kExt; ++i) extS[i] += (extT[i] - extS[i]) * 0.25f;          // modulations de la matrice du synthe, lissees
         updateModulation (n, in0);
         computeEffective();
@@ -755,8 +855,16 @@ private:
                 }
             if (fed) for (int c = 0; c < nc; ++c) for (int i = 0; i < n; ++i) in.ch[c][i] = 1.25f * std::tanh (0.8f * in.ch[c][i]);
 
+            if (nd != NOut && (bypassMask.load() & (1u << nd)) != 0)       // module contourne : le signal passe tel quel
+            {
+                out[nd] = in;
+                if (nd == NComp) compGr.store (0.f);
+                done[nd] = true;
+                continue;
+            }
             switch (nd)
             {
+                case NStut:     modStut (in, out[nd], n, nc); break;
                 case NWide:     modWide (in, out[nd], n, nc); break;
                 case NSat:      modSat (in, out[nd], n, nc); break;
                 case NColor:    modColor (in, out[nd], n, nc); break;
@@ -832,9 +940,13 @@ private:
 
     void computeEffective()
     {
-        if (std::fabs (p.low - lowDbLast) > 0.01f)  { lowB.makeLowShelf (fs, 120.0, p.low);    lowDbLast = p.low; }
-        if (std::fabs (p.mid - midDbLast) > 0.01f)  { midB.makePeak (fs, 1100.0, 0.7, p.mid);  midDbLast = p.mid; }
-        if (std::fabs (p.high - hiDbLast) > 0.01f)  { hiB.makeHighShelf (fs, 9000.0, p.high); hiDbLast = p.high; }
+        const float lowDb = p.low + 12.f * extS[35], midDb = p.mid + 12.f * extS[36], hiDb = p.high + 12.f * extS[37];
+        if (std::fabs (lowDb - lowDbLast) > 0.01f) { lowB.makeLowShelf (fs, 120.0, lowDb);    lowDbLast = lowDb; }
+        if (std::fabs (midDb - midDbLast) > 0.01f) { midB.makePeak (fs, 1100.0, 0.7, midDb);  midDbLast = midDb; }
+        if (std::fabs (hiDb  - hiDbLast)  > 0.01f) { hiB.makeHighShelf (fs, 9000.0, hiDb);    hiDbLast  = hiDb; }
+        eSatTone = clamp01 (p.satTone + 0.6f * extS[34]);
+        eSpread = clamp01 (p.wideSpread + 0.6f * extS[33]);
+        eEnsSpeed = clamp01 (p.ensSpeed + 0.6f * extS[31]);
 
         eSatDrive = U (p.satDrive, CvDrive);
         eSatGain = dbToLin (26.f * std::pow (eSatDrive, 1.2f));
@@ -851,7 +963,7 @@ private:
         const float phBeats = divBeats (p.phSync);
         ePhHz = phBeats > 0.f ? (float) curBpm / 60.f / phBeats : 0.03f * std::pow (266.f, U (p.phRate, CvPhRate));
 
-        comp.set (p.compType, p.compAmt, p.compThresh, p.compAtt);
+        comp.set (p.compType, clamp01 (p.compAmt + 0.6f * extS[32]), p.compThresh, p.compAtt);
         eEnsMix = U (p.ensMix, CvEnsMix);
         eEnsDepth = U (p.ensDepth, CvEnsDepth);
         outTarget = dbToLin (p.output);
@@ -865,15 +977,15 @@ private:
         for (int i = 0; i < n; ++i)
         {
             float l = in.ch[0][i], r = nc > 1 ? in.ch[1][i] : l;
-            if (nc > 1) wider.process (l, r, eWidth, p.wideSpread, p.wideBass);
+            if (nc > 1) wider.process (l, r, eWidth, eSpread, p.wideBass);
             o.ch[0][i] = l; if (nc > 1) o.ch[1][i] = r;
         }
     }
 
     void modSat (const Buf& in, Buf& o, int n, int nc)
     {
-        const bool tiltOn = std::fabs (p.satTone - 0.5f) > 0.002f;
-        const float t = (p.satTone - 0.5f) * 1.3f, aT = onePoleCoef (900.f, fs);
+        const bool tiltOn = std::fabs (eSatTone - 0.5f) > 0.002f;
+        const float t = (eSatTone - 0.5f) * 1.3f, aT = onePoleCoef (900.f, fs);
         const float aTape = onePoleCoef (19000.f - 9000.f * eSatDrive, fs * 4.f);
         const float makeup = 1.f / std::sqrt (eSatGain);
         const int mode = std::max (0, std::min (2, p.satMode));
@@ -972,7 +1084,7 @@ private:
         {
             const float l0 = in.ch[0][i], r0 = nc > 1 ? in.ch[1][i] : l0;
             float wl = 0.f, wr = 0.f;
-            if (eEnsMix > 0.0005f) ens.tick (0.5f * (l0 + r0), eEnsDepth, p.ensSpeed, p.ensTone, wl, wr);
+            if (eEnsMix > 0.0005f) ens.tick (0.5f * (l0 + r0), eEnsDepth, eEnsSpeed, p.ensTone, wl, wr);
             else ens.line.push (0.5f * (l0 + r0));
             o.ch[0][i] = l0 * dryG + wl * wetG;
             if (nc > 1) o.ch[1][i] = r0 * dryG + wr * wetG;
@@ -987,7 +1099,7 @@ private:
         const float fb = clamp01 (p.dlyFb + 0.6f * extS[12]), mix = clamp01 (p.dlyMix + 0.6f * extS[13]);
         const float* inL = in.ch[0]; const float* inR = in.ch[nc > 1 ? 1 : 0];
         float dummyR[kSub];
-        dly.process (inL, inR, o.ch[0], nc > 1 ? o.ch[1] : dummyR, n, nc, p.dlyMode, std::min (2.1f, t), fb * 0.97f, p.dlyTone, p.dlyMod, mix);
+        dly.process (inL, inR, o.ch[0], nc > 1 ? o.ch[1] : dummyR, n, nc, p.dlyMode, std::min (2.1f, t), fb * 0.97f, clamp01 (p.dlyTone + 0.6f * extS[29]), clamp01 (p.dlyMod + 0.6f * extS[30]), mix);
     }
 
     void modVerb (const Buf& in, Buf& o, int n, int nc)
@@ -995,7 +1107,23 @@ private:
         const float mix = clamp01 (p.revMix + 0.6f * extS[14]), dec = clamp01 (p.revDecay + 0.6f * extS[15]), dmp = clamp01 (p.revDamp + 0.6f * extS[16]);
         const float* inL = in.ch[0]; const float* inR = in.ch[nc > 1 ? 1 : 0];
         float dummyR[kSub];
-        verb.process (inL, inR, o.ch[0], nc > 1 ? o.ch[1] : dummyR, n, nc, mix, p.revSize, dec, p.revPre, dmp, p.revMod, p.revWidth, p.revShimmer, p.revLowCut, p.revFreeze);
+        verb.process (inL, inR, o.ch[0], nc > 1 ? o.ch[1] : dummyR, n, nc, mix, clamp01 (p.revSize + 0.6f * extS[25]), dec, clamp01 (p.revPre + 0.6f * extS[26]), dmp, p.revMod, clamp01 (p.revWidth + 0.6f * extS[28]), clamp01 (p.revShimmer + 0.6f * extS[27]), p.revLowCut, p.revFreeze);
+    }
+
+    void modStut (const Buf& in, Buf& o, int n, int nc)
+    {
+        static const float kBeats[7] { 4.f, 2.f, 1.f, 0.5f, 0.25f, 0.125f, 0.0625f };
+        static const float kFeel[3] { 1.f, 2.f / 3.f, 1.5f };
+        auto ci = [] (int v, int lo, int hi) { return std::max (lo, std::min (hi, v)); };
+        const bool on = p.stutOn || extT[17] > 0.3f || cv[CvStutOn] > 0.3f;                                  // piste du sequenceur > seuil = engage
+        const int mode = ci (p.stutMode + (int) std::lround (extT[18] * 3.f), 0, 3);
+        const int div  = ci (p.stutDiv  + (int) std::lround (extT[19] * 6.f), 0, 6);
+        const int feel = ci (p.stutFeel + (int) std::lround (extT[20] * 2.f), 0, 2);
+        const float len = clamp01 (U (p.stutLen, CvStutLen) + extS[21]), decay = clamp01 (U (p.stutDecay, CvStutDecay) + extS[22]);
+        const float pitch = clamp01 (U (p.stutPitch, CvStutPitch) + 0.5f * extS[23]), mix = clamp01 (U (p.stutMix, CvStutMix) + extS[24]);
+        const float beats = kBeats[div] * kFeel[feel];
+        const int Ls = (int) (beats * 60.f * fs / (float) curBpm);
+        stut.process (in, o, n, nc, on, mode, beats, Ls, std::max (0.05f, len), decay, pitch, mix, curPpqStart, curPpqInc);
     }
 
     void modOut (const Buf& wetIn, float** io, int n, int nc)
@@ -1043,10 +1171,18 @@ private:
     Params p;
     float fs = 44100.f;
     Buf out[kNumNodes];
-    Oversampler4 os; Comp comp; Wider wider; Phaser phaser; Ensemble ens; MultiDelay dly; Reverb verb;
+    Oversampler4 os; Comp comp; Wider wider; Phaser phaser; Ensemble ens; MultiDelay dly; Reverb verb; Stutter stut;
     Biquad lowB, midB, hiB; Svf hpfSvf, lpfSvf;
     Lfo lfo1, lfo2; SampleHold sh; Rng shRng; float envV = 0.f;
     float srcVal[kNumSrc] {}, cv[kNumCv] {}, extS[kExt] {}, extT[kExt] {};
+    static constexpr float Params::* kPs[] = { &Params::wideWidth, &Params::wideSpread, &Params::wideBass, &Params::satDrive, &Params::satTone, &Params::low, &Params::mid, &Params::high,
+        &Params::hpf, &Params::hpfPeak, &Params::lpf, &Params::lpfPeak, &Params::phMix, &Params::phRate, &Params::phDepth, &Params::phFb, &Params::compAmt, &Params::compThresh, &Params::compAtt,
+        &Params::ensMix, &Params::ensDepth, &Params::ensSpeed, &Params::ensTone, &Params::dlyFb, &Params::dlyTone, &Params::dlyMod, &Params::dlyMix,
+        &Params::revMix, &Params::revSize, &Params::revDecay, &Params::revPre, &Params::revDamp, &Params::revMod, &Params::revWidth, &Params::revShimmer, &Params::revLowCut,
+        &Params::stutDecay, &Params::stutPitch, &Params::stutMix };
+    static constexpr int kPsN = (int) (sizeof (kPs) / sizeof (kPs[0]));
+    Params pT; float ps[kPsN] {}, ps1[kPsN] {}; bool psInit = false;
+    float eSatTone = 0.5f, eSpread = 0.f, eEnsSpeed = 0.5f;
     float dcC = 0, smoothC = 0, dcLp[2] {}, tiltLp[2] {}, tapeLp[2] {};
     float eSatDrive = 0, eSatGain = 1, eWidth = 0, ePhMix = 0, ePhFb = 0, ePhHz = 0.5f, eEnsMix = 0, eEnsDepth = 0.6f;
     float outTarget = 1, mixTarget = 1, outCur = -1, mixCur = -1;

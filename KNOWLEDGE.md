@@ -1,0 +1,125 @@
+# Foudre Audio — Base de connaissances plugins
+
+Ce que la construction d'Orage et d'Orage FX a appris, pour que le prochain plugin évite les mêmes pièges.
+À relire avant d'écrire un nouveau plugin ; dérouler les tests et la checklist avant chaque envoi.
+Les chiffres viennent des tests automatiques, pas d'une écoute : l'oreille reste le dernier juge.
+
+## Architecture type
+- JUCE 8.0.4, C++17, build Windows par GitHub Actions, release `latest`.
+- `Synth.h` : voix, oscillateurs, filtres, matrice. **Aucune dépendance JUCE** : se teste seul.
+- `Engine.h` : rack d'effets, câblage, modulations externes (blocs de contrôle de 32 échantillons).
+- `Arp.h` : arpégiateur et pistes de modulation.
+- `PluginProcessor.cpp` : paramètres, presets, MIDI, état. Les tables de paramètres sont lues dans l'ordre : l'ordre doit rester identique partout.
+- `PluginEditor.cpp`, `SynthEditor.cpp` : interface. Jamais de calcul audio ici.
+- Une même source donne deux plugins via `ORAGE_SYNTH` (1 = synthé, 0 = effets seuls).
+- Après modification d'un en-tête : recompiler TOUS les objets (un objet périmé = plantage `free(): invalid pointer`).
+
+## Journal des problèmes (symptôme → cause → correction)
+- v18d — Cri strident du Ladder CEM cutoff à fond, parasites en polyphonie (SEM CKT) → (1) g = tan(pi f/fs) monte à 6 près de Nyquist : Newton non amorti diverge et le trapèze sonne à Nyquist ; (2) SEM : diodes placées sur l'amortissement au lieu de la régénération → amortissement qui BAISSE à fort niveau → suréchantillonnage ×2 des filtres circuit (g < 1), Newton amorti (pas ≤ 1 Vs), SEM = amortissement fixe d0 − régénération écrêtée. ERREUR DE MÉTHODE : j'avais validé les filtres seulement à cutoff moyen (800 / 3000 Hz) et sur une note.
+- v18c — Anneau de modulation qui ne fait pas le tour du potard à 100 % → le moteur applique 0,5 / 0,45 / 0,6 sur certaines destinations et l'anneau en tenait compte → la matrice divise par cette échelle (modNative dans Synth.h), l'anneau affiche 100 % = course complète.
+- v18c — Potard à fond à l'allumage d'un module FX → valeurs de départ « legacy » non nulles pour tous les presets et aucun reset à l'activation → defauts à zéro, reset des potards du module quand on l'allume (bouton du module).
+- v18 — Résonance MS-20 trop « générique » → filtre modélisé par réponse, pas par circuit → MS-10 écrit depuis le schéma (équations nodales, trapèze + Newton 1D réduit à la tension de diode), tables de cutoff/compensation issues de l'auto-oscillation SIMULÉE (pas de formule), calibré sur enregistrements réels.
+- v17 — Aigus parasites wavefolder/drive sur notes hautes → repliement de spectre → suréchantillonnage ×4 (demi-bandes 23 et 11 taps), triangle polyBLAMP.
+- v17 — Composante continue en sortie → saturation asymétrique → coupe-continu 6 Hz en sortie du synthé.
+- v16 — Escalier sur le cutoff → réglages lus par blocs sans lissage, CC MIDI à 128 pas → 2 lisseurs en cascade (5,5 ms chacun) + coefficients interpolés par échantillon.
+- v16 — Aigus audibles filtre fermé avec résonance (MS-20) → bande passante ajoutée à la sortie non filtrée → refiltrée à 2× le cutoff (+42 dB → +6 dB).
+- v16 — NaN sur ~1 réglage extrême sur 100 → FM forte sur note très aiguë, phase hors [0,1[ → incréments bornés à 0,49, phase repliée avec floor, garde-fou par voix.
+- v16 — Source assignée sans effet la première fois → routage existant à quantité zéro ou LFO très lent → réassigner donne 50 %, point vivant sur l'anneau.
+- v15b — Anneaux coupés, chiffres « 82 » collés → dessin hors zone du potard → anneaux entre corps et graduations, chiffres rapprochés.
+- v15 — Latence au contrôleur MIDI → réglages du synthé lus avant le MIDI → CC appliqués en début de bloc, une fois par bloc.
+- v15 — Drive qui assombrit → saturation large bande → accentuation > 1,2 kHz avant saturation.
+- v14c — Molette non assignable en MIDI learn → CC1 exclu → accepté.
+- v14 — Molette sans effet → aucun routage par défaut → molette → LPF (slot 13) + moniteur MIDI.
+- v13 — Macros sur de mauvais CC → numéros sauvegardés dans les presets → déplacés dans le projet, défaut CC 16–23.
+- v13 — Tuiles du rack mal alignées → deux listes de modules → une liste partagée.
+
+## Règles de qualité audio
+1. Lisser tout réglage continu (2 étages, ~20 ms au total).
+2. Interpoler les coefficients à chaque échantillon.
+3. Suréchantillonner toute saturation forte (×4).
+4. Band-limiter les oscillateurs (polyBLEP, polyBLAMP).
+5. Borner ce qui peut exploser (phase, résonance, sortie en tanh).
+6. Garde-fou par voix : valeur non finie → états remis à zéro.
+7. Un filtre fermé doit être vraiment fermé : tout signal ajouté après le filtre est lui-même filtré.
+8. Coupe-continu en sortie dès qu'une saturation est asymétrique.
+9. Lire le MIDI avant les réglages du bloc.
+10. Démarrer neutre (volume prudent, effets à zéro).
+
+## MIDI, presets, compatibilité
+- Ne jamais réordonner une liste enregistrée (sources, destinations, modules) : ajouter à la fin.
+- Paramètres identifiés par leur nom ; un paramètre absent prend sa valeur par défaut.
+- Garder le chargement des anciens formats.
+- Assignations MIDI dans le projet et la configuration globale, pas dans les presets.
+- Macros CC 16–23, molette CC1, apprentissage MIDI par clic droit, modes SCALE / PICKUP / DIRECT.
+- Un moniteur MIDI visible dans l'en-tête.
+
+## Interface
+- Rien ne dépasse de la zone d'un potard ; vérifier les voisins sur capture agrandie.
+- Menus longs en sous-menus par module.
+- Modulation : clic droit « Assigner à », 2 sources max, un anneau par source, Ctrl + clic gauche + glisser.
+- Montrer une capture avant d'envoyer ; attendre l'accord avant un nouveau design.
+- Non testable sur le banc : menus ouverts, souris réelle.
+
+## Batterie de tests (résultats Orage v17)
+- Réglages aléatoires extrêmes : 0 NaN sur 250, pic max 0,84.
+- 65 presets d'usine : pic < 1, continu < 0,02 ; 5 signalés pour souffle ou larsen voulu.
+- Filtre fermé + résonance : +6 dB d'aigus au plus.
+- Repliement : drive −38 dB (−22 avant), wavefolder à fond −20 dB (−11 avant).
+- CPU : 8 % d'un cœur, 6 notes, rack complet, compilation optimisée.
+- Apprentissage MIDI, état sauvegardé, captures agrandies.
+- Méthode : un test qui ne distingue pas avant/après mesure la mauvaise chose ; pour un NaN, remettre un réglage à zéro à la fois.
+
+## Checklist avant de pousser
+1. Compilation synthé sans erreur, syntaxe de la version effets.
+2. Tous les objets recompilés.
+3. Batterie de tests.
+4. Listes enregistrées intactes.
+5. Capture agrandie regardée.
+6. README à jour.
+7. Accord donné.
+8. Push sur les deux dépôts, deux builds verts.
+9. Compte rendu : mesuré, non vérifié, à juger à l'oreille.
+
+## Méthode : modéliser un filtre d'après son schéma
+1. Schéma → inconnues (nœuds) et équations de courant ; OTA : I = Gp·Vs·tanh(v/Vs) ; condensateurs en trapèze (h = 2·G·v − h_ancien).
+2. Réduire à une inconnue (ici la tension de diode) → Newton 1D, départ extrapolé, ≤ 10 itérations, garde-fou non fini → reset.
+3. Cutoff : table construite à partir de la fréquence d'auto-oscillation simulée (inclut la pré-déformation bilinéaire), jamais d'une formule théorique.
+4. Valider sur enregistrements : réponse harmonique relative au filtre ouvert, ajustement du cutoff par trame, erreur RMS ancien/nouveau.
+5. Mesurer CPU en vrai plugin, fuzz de réglages extrêmes, presets.
+6. OBLIGATOIRE avant de pousser un filtre : grille de stabilité (tools/tests/stabilite_filtres.cpp) : notes 48 à 96 et accords, cutoff 0,5 à 1,0, résonance jusqu'à 0,9, drive, enveloppe, à 44,1 et 48 kHz ; critère : énergie hors harmoniques < -20 dB et comparaison aux anciens filtres. Un filtre non linéaire implicite se teste TOUJOURS cutoff à fond.
+
+## Méthode : générer et calibrer des presets
+Table de données (tools/presets/presets.py) → code C++ → banc de test qui joue chaque preset → niveau de sortie calculé par catégorie (RMS pour les sons tenus, crête pour les plucks/arpèges) → 2 passes. Toujours garder une table séparée des fonctions : refaire les presets coûte alors une heure, pas une journée.
+
+## Reste à faire sur Orage
+- Écouter les 74 presets v18 (niveaux mesurés, timbres non écoutés) ; presets Rack FX gardent encore les anciens réglages de départ.
+- Ladder CEM3320 et SEM circuit faits d'après les schémas seulement (v18) ; les caler sur des enregistrements du matériel quand le user en a (MS-10 à 80 % / 90 % aussi). Compensation de hauteur de l'auto-oscillation CEM (+7,5 % sur g) ajoutée à la main : l'OTA saturé fait baisser la fréquence.
+- Écouter le MS-10 circuit ; décider du roll-off aigu et d'un réglage d'asymétrie.
+- À l'oreille : lissage 20 ms, MS-20 adouci, drive brillant, wavefolder.
+- Dans Ableton : menu « Assigner à », anneaux à la souris, sous-menus.
+- Wavefolder à fond sur notes très aiguës : reste −20 dB (×8 possible).
+- Rack FX : saturations non suréchantillonnées, pas d'audit à l'écoute module par module.
+- Clics possibles sur changements à positions fixes pendant une note.
+
+## Adapter un synthé à un contrôleur MIDI (exemple Hydrasynth)
+- Une table `id de paramètre → CC` par défaut (une fonction `defaultCcOf`) ; ne sauvegarder que les écarts par rapport à elle, ainsi les anciens projets ne cassent pas et on peut changer la carte plus tard.
+- Tester l'absence de collision (deux paramètres sur un même CC) dans un test automatique.
+- Program Change : ne jamais charger un preset depuis le thread audio ; poser un atomic + `AsyncUpdater`, et un compteur que l'éditeur surveille pour se rafraîchir.
+- Pédale de sustain : retenir les note-off dans le processeur (indépendant du moteur de voix).
+- Ajouter un paramètre = toujours à la FIN de la liste des paramètres (et de sa lecture), pour rester compatible avec les états sauvegardés.
+
+## Zephyr v2 : porter un plugin "frere" sur un nouveau moteur
+- Methode : fusion a trois voies des editeurs (`git merge-file` : base = Orage au moment ou Zephyr v1 en est parti, "ours" = Zephyr v1, "theirs" = Orage v20b, noms de classes alignes par sed avant la fusion). Les conflits restants sont presque tous de l'identite visuelle (noms des modules, peinture des plaques, logo) : les resoudre a la main en gardant les fonctions nouvelles (bypass, MIDI, SETTINGS) dans le dessin de Zephyr.
+- Moteur d'effets : garder l'infrastructure la plus recente (bypass, lissage 2 etages, 38 entrees de modulation) et y remettre les modules du plugin ; garder la meme numerotation des entrees de modulation que le synthe (alias de noms `MdPhMix = MdFxUnc`...) pour ne pas toucher au moteur de voix.
+- Parametres : ceux de la v1 gardent leur position (automation des projets), les nouveaux vont a la fin. Etat : un drapeau (`zv2`) declenche la migration des anciens projets (types de filtre, numeros de destinations).
+- Niveaux : mesurer chaque preset (accord tenu, RMS et crete) dans l'ancienne et la nouvelle version avec le meme harnais ; corriger par un trim de sortie par preset plutot que par un gain global (les ecarts viennent surtout du type de filtre et de la resonance).
+- Piege : en comparant deux tableaux de mesures, verifier les colonnes (une premiere comparaison crete/RMS a fait croire a +12 dB).
+
+## Filtre Prophet (SSM2040, Zephyr v2)
+- 4 poles OTA (tanh par etage), resolution trapezoidale + Newton amorti comme le CEM3320 ; retour de resonance ecrete (tanh(0,55 x) / 0,55) avec sa derivee dans le jacobien.
+- Niveau d'attaque des cellules 1,0 (a 1,6, les accords a forte resonance intermodulent fort) ; compensation des graves 1 + 0,12 k ; sortie x (0,75 + 0,4 res) pour rester au niveau des autres filtres.
+- Reste a faire : caler sur un enregistrement de Prophet-5 rev 1-2 (frequence d'auto-oscillation, kProTune = 0,075 copie du CEM).
+
+## Reste a faire sur Zephyr v2
+- Ecouter les 43 presets (niveaux mesures, timbres non ecoutes), en particulier ceux qui etaient sur le Ladder v1 (passes au CEM3320) et le Prophet.
+- CPU High Fidelity avec 12 voix : jusqu'a ~1 coeur du serveur de build sur CEM3320 / Prophet. Pistes : ne pas suréchantillonner les voix en release, ou High Fidelity limite a 8 voix.

@@ -1,42 +1,61 @@
 # Zephyr — Foudre Audio
 
-Synthétiseur polyphonique vintage pour sons riches, lumineux et subtils, bâti sur l'architecture d'Orage.
-Deux plugins, même design :
+Synthétiseur polyphonique vintage pour sons riches, lumineux et subtils. **Zephyr v2** est reconstruit sur le dernier moteur d'Orage (v20b) en gardant toute l'identité de Zephyr.
+Deux plugins, même design, même dépôt :
 
-- **Zephyr** (instrument VST3) : synthé 12 voix + rack d'effets. Onglets SYNTH / EFFECTS + volet MATRIX. Répond au MIDI.
+- **Zephyr** (instrument VST3) : synthé 12 voix + rack d'effets. Onglets SYNTH / ARP / EFFECTS + volet MATRIX. Répond au MIDI.
 - **Zephyr FX** (effet VST3) : le rack d'effets seul, pour les pistes audio.
 
 ## Synthé
-- 2 oscillateurs **SAW / PULSE / TRI / SIN**, octaves, pitch / fine, PWM, **hard sync**, **FM**, **ring mod**, **sub-oscillateur** (carré, une octave sous l'OSC 1), bruit, glide.
+- 2 VCO **SAW / PULSE / TRI / SIN**, octaves, pitch / fine, PWM, **hard sync**, **FM** (module complet : direction, ratio, onde, enveloppe, palettes), **ring**, **sub-oscillateur** (carré une octave sous le VCO 1), bruit, glide.
+- **Vibrato du VCO 1** : LFO AMT (LFO 1 → hauteur du VCO 1), + WHEEL, + AFTER.
 - **DRIFT** : chaque voix dérive lentement et différemment (désaccord, cutoff, temps d'enveloppe), oscillateurs libres.
-- **Filtre** au choix : **SEM** (12 dB, morph LP / notch / HP), **LADDER** (24 dB), **PROPHET** (24 dB façon CEM3320, graves conservés).
-  HPF doux en amont, **SATURATION** dans la boucle du filtre (brillant à petite dose, claquant à fond).
-- **POLY-MOD** façon Prophet : enveloppe du filtre et OSC 2 vers la fréquence ou la largeur d'impulsion de l'OSC 1, et/ou le filtre.
-- Enveloppes ADSR filtre et ampli, **4 LFO** (SIN / TRI / SAW / SQR / S&H, slew, fade-in, retrig, synchro), **wavefolder**.
-- **Matrice 12 slots** (menus rangés par familles) et **8 macros** pilotables en MIDI CC (16 à 23 = macros 1 à 8 de l'Hydrasynth, clic droit = learn).
-- **Key Assign** : POLY / MONO / UNISON (8 voix empilées) / SHARE / CHORD MEMORY, HOLD. **Arpégiateur** façon Monopoly.
+- **Filtres circuit** : **MS-10**, **LADDER CEM3320**, **SEM**, et **PROPHET** (pôles OTA type SSM2040, résonance qui s'arrondit en saturant, graves conservés). Passe-haut en amont, SATURATION dans la boucle, potard LFO 1 du filtre, SEM MORPH.
+- **POLY-MOD** façon Prophet-5 : enveloppe du filtre et VCO 2 vers la fréquence (FREQ A) ou la largeur (PW A) du VCO 1, et/ou le filtre.
+- Enveloppes ADSR filtre et ampli, **4 LFO** de 0,05 à **300 Hz** (SIN / TRI / SAW / SQR / S&H, slew, fade-in, retrig, synchro), **wavefolder**.
+- **Matrice 16 slots** (menus en sous-menus par module), anneaux de modulation sur les potards, **8 macros** (CC 16 à 23 = macros 1 à 8 de l'Hydrasynth).
+- **Key Assign** : POLY / MONO / UNISON (8 voix empilées) / SHARE / CHORD MEMORY, HOLD.
 
-## Effets (rack réordonnable, prises de patch)
-- **WARM SATURATION** : TAPE / CONSOLE / TUBE, DRIVE, TONE.
-- **EQ** : LOW / MID / AIR.
-- **FILTER** : HPF > LPF résonants.
-- **PHASER** : 4 à 12 étages, MIX, RATE (ou synchro), DEPTH, FEEDBACK.
-- **COMPRESSOR** : OPTO (doux, relâchement lent) ou GLUE (bus), RATIO, THRESHOLD, ATTACK, VU-mètre.
-- **STRING ENSEMBLE** façon Solina : trois lignes, chorus lent + vibrato rapide, MIX, DEPTH, SPEED, TONE.
-- **DELAY multimode** : TAPE (pleurage, saturation, s'assombrit) / ICE (chaque répétition monte d'une octave et se diffuse) /
-  PING-PONG / DIGITAL (TONE = passe-bas, MOD = passe-haut) ; TIME ou synchro, FEEDBACK, TONE, MOD, MIX.
-- **PLATE REVERB** : SIZE, DECAY, PRE-DELAY, DAMPING, MOTION, WIDTH, SHIMMER, LOW CUT, FREEZE.
-- **STEREO WIDE** : WIDTH (mid/side), SPREAD (crée de la stéréo à partir d'un son mono), BASS MONO.
-- Tous les modules démarrent neutres (mix et drive à zéro) ; les presets d'usine gardent leur son.
+## Arpégiateur (page ARP)
+- Arpégiateur / séquenceur d'Orage v20b : grille de 16 pas (silence / note / accent, ratchet par pas), ratchet global, triolets, tap tempo, swing, chance, gate, 6 directions, 1 à 4 octaves, mode SEQ avec enregistrement pas à pas, **8 pistes de modulation**.
+- Façon **Mono/Poly**, comme dans Zephyr v1 :
+  - **POLY** : les pas tournent sur 4 VCO (chacun réagit un peu différemment à la FM). **SHIFT** décale chaque VCO d'une fraction de pas, **CLUSTER** resserre les 4 notes d'un tour vers son début (à fond : accord plaqué ; avec un peu de SHIFT : accord gratté).
+  - **MONO / UNISON** arpègent l'accord tenu sur une seule voix.
+  - Changer de mode Key Assign **ne coupe pas l'arpège** : les notes en cours sont relâchées proprement, le motif continue.
+
+## Effets (rack réordonnable, bypass par module, prises de patch)
+- **WARM SATURATION** (TAPE / CONSOLE / TUBE), **EQ** (LOW / MID / AIR), **FILTER** (HPF > LPF), **PHASER** (4 à 12 étages), **COMPRESSOR** (OPTO / GLUE).
+- **STRING ENSEMBLE** façon Solina, **DELAY multimode** TAPE / ICE / PING-PONG / DIGITAL, **PLATE REVERB + SHIMMER**, **STEREO WIDE**.
+- **STUTTER / BEAT REPEAT** (nouveau, d'Orage) : repeat / reverse / gate / offbeat, divisions, feel, pilotable par les pistes de l'arpégiateur.
+- Tous les modules démarrent neutres (mix et drive à zéro). Nouvelle instance et preset Init : ensemble + delay + reverb, mix à zéro.
+
+## MIDI (adaptation Hydrasynth)
+- **Carte CC par défaut** de l'Hydrasynth (comme Orage) : cutoff 74, résonance 71, saturation 50, keytrack 51, LFO 1 du filtre 52, quantité d'enveloppe 54, passe-haut 55/56, LFO 72/73/76/78, ENV1 81-84 (filtre), ENV2 85-88 (ampli), glide 5, bruit 3, master 7, etc.
+- Effets de Zephyr sur les CC FX de l'Hydrasynth : **reverb** mix 91 / decay 65 / tone 67, **delay** mix 92 / time 15 / feedback 14 / tone 63, **Pre-FX → ensemble** 93, **Post-FX → phaser** 94.
+- Arpégiateur : division 106, gate 107, mode 108, ratchet 109, chance 110, octaves 120, longueur 122. Macros 1-8 sur CC 16-23.
+- **Program Change** → preset d'usine, **pédale de sustain** (arpège compris), étendue du **pitch bend** réglable (±1 à ±24).
+- MIDI learn par clic droit sur n'importe quel potard, bouton MIDI (étiquettes CC), moniteur MIDI dans l'en-tête ; reprise SCALE / PICKUP / DIRECT.
+
+## Panneau SETTINGS
+- **Qualité audio** : *Performance* (filtres ×2), *Quality* (×4, défaut), *High Fidelity* (×8).
+- **Lissage MIDI** (0 à 80 ms, défaut 20 ms), **aftertouch** réglable (courbe et réactivité), mode de reprise.
+- Réglages globaux : sauvegardés avec le mapping MIDI et le projet, jamais dans les presets.
 
 ## Design
-- Trois thèmes (bouton en haut) : **ALUMINIUM** (aluminium brossé et bleu, par défaut), **CREME** (crème, bois et ambre), **MINUIT** (bleu nuit).
-- Plaques de modules vissées, flancs en bois, potards à jupe moletée et chapeau en aluminium, arc lumineux de la valeur.
-- **Prisme** dans l'en-tête : un faisceau blanc entre, un éventail de couleurs sort ; il s'allume avec le niveau et s'ouvre avec la brillance du son.
-  Un clic bascule sur l'**oscilloscope**.
-- Fenêtre redimensionnable, cran magnétique au zéro des potards bipolaires.
+- Trois thèmes : **ALUMINIUM** (aluminium brossé et bleu, par défaut), **CREME** (crème, bois et ambre, façon PolyBrute), **MINUIT** (bleu nuit).
+- Plaques vissées, flancs en bois, potards à jupe moletée et chapeau aluminium. Bouton d'activation (bypass) sur chaque module du rack.
+- **Prisme** dans l'en-tête (il s'allume avec le niveau et s'ouvre avec la brillance) ; un clic bascule sur l'**oscilloscope**.
+- Fenêtre redimensionnable, cran magnétique au zéro des potards bipolaires, potards crantés pour MODE / OCTAVE / RATCHET.
+
+## v2 : historique des tests et des choix
+- **Base** : moteur, interface et MIDI d'Orage v20b ; modules d'effets, thèmes, presets et arpégiateur Mono/Poly de Zephyr v1.
+- **Filtre Prophet** : modèle à 4 pôles OTA (résolution trapézoïdale + Newton amorti, comme le CEM3320), retour de résonance écrêté. Grille de stabilité (`tools/tests/stabilite_filtres.cpp`, 1632 réglages par mode de qualité sur CEM3320, SEM et Prophet) : MS-10, CEM3320 et SEM sans parasite ; Prophet : 1 cas (accord de 5 notes, résonance 90 %), de l'intermodulation attendue à ce niveau de résonance.
+- **Fuzz** : 120 réglages tirés au hasard (44,1 et 96 kHz, 3 qualités, 4 filtres, poly-mod, drift, sub) : aucune valeur invalide ni explosion.
+- **CPU** (12 voix tenues + rack complet, un cœur du serveur de build, sans optimisation spécifique) : Performance 21–38 %, Quality 22–56 %, High Fidelity 35–98 % (CEM3320 et Prophet les plus coûteux). *High Fidelity avec 12 voix est réservé au rendu ou aux sons à peu de notes.*
+- **Presets** : les 43 presets de Zephyr v1 sont conservés (filtres v1 → circuits : SEM → SEM, LADDER → CEM3320, PROPHET → Prophet). Niveau mesuré contre la v1 (accord tenu) : 29 presets à ±1,5 dB sans retouche, 14 recalés par un trim de sortie (de −3,6 à +2,4 dB). Timbres non écoutés : à juger à l'oreille.
+- **Projets Zephyr v1** : filtres et destinations de matrice (SUB, POLY-MOD, DRIFT) migrés à l'ouverture, vitesse des LFO conservée, patch du rack lu (le stutter n'existait pas).
+- **Test MIDI** (`tools/tests/midi_hydrasynth.cpp`) : collisions de CC, CC74, Program Change, sustain, bend, LFO du filtre, CC des effets, macros 16-23, rack de départ, MONO arpège l'accord, POLY tourne sur 4 VCO, l'arpège continue après un changement de mode, aucune note bloquée, migration v1 : **TOUT OK**.
 
 ## Compilation (GitHub Actions)
 Chaque push sur `main` lance le build Windows et publie `Zephyr-VST3-Windows.zip` dans la Release **latest** du dépôt.
-Dézipper et copier `Zephyr.vst3` et `Zephyr FX.vst3` dans `C:\Program Files\Common Files\VST3`.
-L'ancien Zephyr (synthé à larsens) avait un autre identifiant : supprimer son `.vst3` avant de copier le nouveau.
+Dézipper et copier `Zephyr.vst3` et `Zephyr FX.vst3` dans `C:\Program Files\Common Files\VST3` (remplacer la v1 : mêmes identifiants, les projets se rouvrent).

@@ -180,6 +180,8 @@ const std::vector<SynDef>& synDefs()
         F ("s_vib", "VCO1 LFO Amount", 0, 1, 0);  F ("s_vibWheel", "VCO1 LFO + Wheel", 0, 1, 0);  F ("s_vibAT", "VCO1 LFO + Aftertouch", 0, 1, 0);
         C ("s_fmType", "FM Type", "Exponential|Linear (DX)", 0);  F ("s_fmFb", "FM Feedback", 0, 1, 0);  F ("s_fmKey", "FM Key Scaling", 0, 1, 0);
         for (int i = 1; i <= kSlots; ++i) C ("s_slot" + juce::String (i) + "Dir", "Mod " + juce::String (i) + " Direction", "Forward|Backward|Both", 0);       // sens de chaque routage (v22)
+        B ("s_envLink", "Env Link (Filter Env drives Amp)", false);                                                       // LINK des enveloppes (v3b)
+        C ("s_env2Dst", "Env 2 Destination", "Off|VCO2 Pitch|VCO1+2 Pitch|FM|PWM|Wavefold|VCO2 Level|Ring", 0);  F ("s_env2Amt", "Env 2 Amount", -1, 1, 0);
         return v;
     }();
     return defs;
@@ -748,6 +750,7 @@ zephyr::SynthParams ZephyrAudioProcessor::readSynth()
     s.vib = f(); s.vibWheel = f(); s.vibAT = f();
     s.fmType = n(); s.fmFb = f(); s.fmKey = f();
     for (auto& sl : s.slot) sl.dir = n();
+    s.envLink = b(); s.env2Dst = n(); s.env2Amt = f();
     jassert (i == rawSyn.size());
     s.quality = quality.load();
     {                                                                       // lissage des reglages (pas de crenelage quand on tourne un potard MIDI 7 bits)

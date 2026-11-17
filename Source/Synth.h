@@ -52,6 +52,10 @@ inline float modNative (int d)
     return 1.f;
 }
 constexpr int kFxMod = 46;                // destinations FX : MdFxPower .. MdRevDamp (les 10 premieres = les entrees CV du moteur d'effets)
+// destinations du raccourci ENV 2 (LINK allume) : 0 aucune
+inline constexpr int kEnv2Dst[] { MdNone, MdPitch2, MdPitch, MdFm, MdPw1, MdFold, MdMix, MdRing };
+inline const char* const kEnv2DstNames[] { "OFF", "VCO 2 PITCH", "VCO 1+2 PITCH", "FM", "PWM", "WAVEFOLD", "VCO 2 LEVEL", "RING" };
+constexpr int kNumEnv2Dst = (int) (sizeof (kEnv2Dst) / sizeof (kEnv2Dst[0]));
 inline const char* const kModSrcNames[kNumModSrc] { "-", "LFO 1", "LFO 2", "LFO 3", "LFO 4", "MACRO 1", "MACRO 2", "MACRO 3", "MACRO 4", "ENV FLT", "VELOCITY", "MOD WHEEL", "ENV AMP", "KEY TRACK", "RANDOM", "AFTERTOUCH", "POLY AT", "MACRO 5", "MACRO 6", "MACRO 7", "MACRO 8", "ARP LANE 1", "ARP LANE 2", "ARP LANE 3", "ARP LANE 4", "ARP LANE 5", "ARP LANE 6", "ARP LANE 7", "ARP LANE 8" };
 inline const char* const kModDstNames[kNumModDst] { "-", "PITCH", "PITCH VCO2", "PWM VCO1", "PWM VCO2", "FM", "RING", "LEVEL VCO2", "HPF", "CUTOFF", "RESO", "LEVEL", "PAN",
     "FOLD", "SAT DRIVE", "WIDE WIDTH", "PHASER MIX", "FX HPF", "FX LPF", "FX PEAK", "PHASER RATE", "ENS DEPTH", "ENSEMBLE MIX", "FX DRY/WET", "PHASER FDBK", "DELAY TIME", "DELAY FEEDBK", "DELAY MIX",
@@ -80,7 +84,8 @@ struct SynthParams
     float aA = 0.01f, aD = 0.3f, aS = 0.8f, aR = 0.25f;
     float fA = 0.01f, fD = 0.35f, fS = 0.2f, fR = 0.25f;
     int assign = 0, hold = 0;                 // affectation des touches (Poly, Mono, Unison, Share, Chord) et HOLD
-    int fmType = 0; float fmFb = 0.f, fmKey = 0.f;   // FM : 0 exponentielle (analogique) / 1 lineaire (modulation de phase, style DX) ; retour du modulateur sur lui-meme ; profondeur reduite dans l'aigu
+    int fmType = 0; float fmFb = 0.f, fmKey = 0.f;
+    bool envLink = false; int env2Dst = 0; float env2Amt = 0.f;   // LINK : l'enveloppe FILTRE pilote aussi le volume, l'enveloppe AMP devient ENV 2 libre (raccourci DEST / AMOUNT)   // FM : 0 exponentielle (analogique) / 1 lineaire (modulation de phase, style DX) ; retour du modulateur sur lui-meme ; profondeur reduite dans l'aigu
     int fmDir = 0, fmRatio = 0, fmWave = 0;   // FM : sens (0 VCO2>VCO1, 1 VCO1>VCO2, 2 croisee), rapport de frequence (0 libre), onde du modulateur (0 = celle du VCO)
     float fmFine = 0.f, fmAtt = 0.f, fmDec = 0.4f, fmEnvAmt = 0.f, fmVel = 0.f, fmAT = 0.f;     // FM : desaccord fin, enveloppe de profondeur, vitesse, aftertouch
     float uniDetune = 0.3f;                   // ecart de desaccord des voix empilees
@@ -740,7 +745,7 @@ private:
     {
         bool active = false; int note = 60; float vel = 1.f; uint64_t age = 0;
         bool gated = false, raw = false; int slot = -1; float uniCents = 0.f, uniPan = 0.f, gainV = 1.f;
-        sy::Env aenv, fenv; float pitch = 60.f, ph1 = 0.f, ph2 = 0.f, prev1 = 0.f, prev2 = 0.f, fmT = 0.f;
+        sy::Env aenv, fenv, e2; float pitch = 60.f, ph1 = 0.f, ph2 = 0.f, prev1 = 0.f, prev2 = 0.f, fmT = 0.f;
         sy::Hp hp; sy::Ms10 ms; sy::Cem3320 cem; sy::SemCkt sck; sy::ProphetSsm pro; bool subFlip = false; float fmK = 1.f; float pat = 0.f, pat1 = 0.f, patS = 0.f, nBend = 0.f, nBendS = 0.f, slide = 0.f, rndv = 0.f; float xPrev = 0.f, drvLp = 0.f; sy::OverVar osF, osD, osV; bool cInit = false; float c0[20] {}; float lph[kLfos] {}, lfade[kLfos] {}, lsh[kLfos] {}, lcur[kLfos] {}; float envM[9] {};     // envM : modulation des enveloppes (bloc precedent)
     };
     static constexpr int kKeys = 16;
@@ -761,7 +766,7 @@ private:
     int findKey (int note) const { for (int i = 0; i < nKeys; ++i) if (keys[i].note == note) return i; return -1; }
     int physCount() const { int c = 0; for (int i = 0; i < nKeys; ++i) c += keys[i].phys ? 1 : 0; return c; }
     float maxCents() const { return 45.f * std::pow (std::max (0.f, std::min (1.f, P.uniDetune)), 1.2f); }
-    static void release (Voice& v) { v.aenv.off(); v.fenv.off(); v.gated = false; }
+    static void release (Voice& v) { v.aenv.off(); v.fenv.off(); v.e2.off(); v.gated = false; }
     // Bascule de mode (POLY / MONO / UNISON / SHARE / CHORD) sans couper les notes tenues : les voix en cours sont reprises par le nouveau mode,
     // celles qui deviennent inutiles partent en release naturelle (jamais de coupure sechement).
     void remapAssign (int oldA)
@@ -819,7 +824,7 @@ private:
         v->uniCents = cents; v->uniPan = pan; v->gainV = gain;
         v->pitch = glide ? (float) lastNote : (float) note;
         if (P.drift > 0.001f) { v->ph1 = rndU(); v->ph2 = rndU(); }        // oscillateurs libres : chaque note demarre ailleurs dans le cycle
-        v->aenv.on(); v->fenv.on(); lastVel = vel;
+        v->aenv.on(); v->fenv.on(); v->e2.on(); lastVel = vel;
         v->rndv = rnd(); lastRnd = v->rndv; lastKey = std::max (-1.f, std::min (1.f, ((float) note - 60.f) / 48.f));
         for (int i = 0; i < kLfos; ++i) { v->lph[i] = 0.f; v->lfade[i] = 0.f; v->lsh[i] = rnd(); v->lcur[i] = v->lsh[i]; }
         lastNote = note;
@@ -903,7 +908,7 @@ private:
         for (int i = 0; i < kLanes; ++i) src[laneSrc (i)] = laneC[i];
         float e = 0.f; for (auto& v : voices) if (v.active) e = std::max (e, v.fenv.v);
         src[MsEnv] = e; src[MsVel] = lastVel; src[MsWheel] = wheel;
-        float ae = 0.f, pa = 0.f; for (auto& v : voices) if (v.active) { ae = std::max (ae, v.aenv.v); pa = std::max (pa, v.patS); }
+        float ae = 0.f, pa = 0.f; for (auto& v : voices) if (v.active) { ae = std::max (ae, P.envLink ? v.e2.v : v.aenv.v); pa = std::max (pa, v.patS); }
         src[MsAmpEnv] = ae; src[MsKey] = lastKey; src[MsRandom] = lastRnd; 
         src[MsChanAT] = chanATs; src[MsPolyAT] = std::max (pa, chanATs);
         float acc[kFxMod] {};
@@ -969,10 +974,13 @@ private:
         const float driftA = std::min (1.f, std::max (0.f, P.drift + v.envM[8]));          // derive (modulation du bloc precedent)
         const float envK = 1.f + 0.14f * driftA * vEnv[vi];                                 // chaque voix a des temps d'enveloppe un peu a elle
         auto tm = [envK] (float t, float m) { return t * envK * std::pow (4.f, m); };      // temps d'enveloppe : x4 / :4 a pleine modulation
-        const float fe = v.fenv.tick (tm (P.fA, v.envM[4]), tm (P.fD, v.envM[5]), std::min (1.f, std::max (0.f, P.fS + v.envM[6])), tm (P.fR, v.envM[7]), fs / (float) kCtl);   // enveloppes cadencees au bloc
+        const float fA2 = tm (P.fA, v.envM[4]), fD2 = tm (P.fD, v.envM[5]), fS2 = std::min (1.f, std::max (0.f, P.fS + v.envM[6])), fR2 = tm (P.fR, v.envM[7]);
+        const float fe = v.fenv.tick (fA2, fD2, fS2, fR2, fs / (float) kCtl);   // enveloppes cadencees au bloc
+        // LINK : ENV 2 libre = l'enveloppe AMP (ses reglages et modulations), le volume suit l'enveloppe FILTRE
+        const float e2v = P.envLink ? v.e2.tick (tm (P.aA, v.envM[0]), tm (P.aD, v.envM[1]), std::min (1.f, std::max (0.f, P.aS + v.envM[2])), tm (P.aR, v.envM[3]), fs / (float) kCtl) : v.aenv.v;
         const float wheelV = std::max (wheel, v.slide);
         src[MsEnv] = fe; src[MsVel] = v.vel; src[MsWheel] = wheelV;
-        src[MsAmpEnv] = v.aenv.v; src[MsKey] = std::max (-1.f, std::min (1.f, (v.pitch - 60.f) / 48.f)); src[MsRandom] = v.rndv;
+        src[MsAmpEnv] = e2v; src[MsKey] = std::max (-1.f, std::min (1.f, (v.pitch - 60.f) / 48.f)); src[MsRandom] = v.rndv;
         v.pat1 += (v.pat - v.pat1) * atSc; v.patS += (v.pat1 - v.patS) * atSc;      // aftertouch polyphonique : 2 lisseurs (les pas de 1/127 ne craquent plus dans un filtre resonant)
         src[MsChanAT] = chanATs; src[MsPolyAT] = perNoteAT ? v.patS : std::max (v.patS, chanATs);
         v.nBendS += (v.nBend - v.nBendS) * atSc;
@@ -983,6 +991,12 @@ private:
             if (P.lane[i].dst > 0 && P.lane[i].amt != 0.f) md[P.lane[i].dst] += laneC[i] * P.lane[i].amt / modNative (P.lane[i].dst);
 
         if (P.fltLfo != 0.f) md[MdLpf] += src[MsLfo2] * P.fltLfo / modNative (MdLpf);
+        if (P.envLink && P.env2Dst > 0 && P.env2Dst < kNumEnv2Dst && P.env2Amt != 0.f)        // raccourci ENV 2 -> destination
+        {
+            const int d = kEnv2Dst[P.env2Dst];
+            md[d] += e2v * P.env2Amt / modNative (d);
+            if (d == MdPw1) md[MdPw2] += e2v * P.env2Amt / modNative (MdPw2);                    // PWM : les deux VCO
+        }
         for (int k = 0; k < 8; ++k) v.envM[k] = md[MdAmpA + k];
         v.envM[8] = md[MdDrift];
         const float dc1 = driftA * (5.f * vOff1[vi] + 11.f * walk1[vi]), dc2 = driftA * (5.f * vOff2[vi] + 11.f * walk2[vi]);     // derive en cents
@@ -1116,7 +1130,7 @@ private:
                 const float dq = cc[16], g2 = sy::gHalfN (gLm, facFlt);
                 lp = v.osV.run (dx, facFlt, [&v, g2, dq, morph] (float u) { return v.sck.run (u, g2, dq, morph); });
             }
-            const float a = v.aenv.tick (aA2, aD2, aS2, aR2, fs);
+            const float a = P.envLink ? v.aenv.tick (fA2, fD2, fS2, fR2, fs) : v.aenv.tick (aA2, aD2, aS2, aR2, fs);   // LINK : le volume suit l'enveloppe FILTRE (au rythme audio)
             const float y = lp * a * level * v.gainV * (0.35f + 0.65f * v.vel);
             if (! (std::fabs (y) < 8.f))                                   // garde-fou : NaN, infini ou valeur folle -> on remet les etats a zero (jamais de bruit ni de blocage)
             {

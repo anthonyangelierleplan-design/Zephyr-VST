@@ -147,4 +147,5 @@ Table de données (tools/presets/presets.py) → code C++ → banc de test qui j
 - Rapport FM : la hauteur du VCO 2 = VCO 1 x rapport ; ajouter 12*oct2 + tune2 + fine2 par-dessus, sinon ces potards sont morts.
 - SEQ : dans Arp, ne jamais remettre phase/stepCount a zero sur noteOn en mode SEQ ; faire tourner l'horloge a vide quand aucune touche n'est tenue ; caler sur le DAW au debut du bloc (position en pas = ppq x pas par temps) en comparant les positions "sans swing" (pas pair long de 1+sw, impair de 1-sw), recaler seulement si l'ecart > 0,02 pas.
 - Processeur : TYPE SEQ force ap.on = 1 (sauf enregistrement pas a pas).
+- LINK des enveloppes : le VCA doit rester au rythme audio -> quand LINK est allume, l'enveloppe audio `aenv` est simplement cadencee avec les reglages FILTRE (pas de marches d'un bloc), et une 3e enveloppe `e2` (reglages AMP, cadencee au bloc) sert de source ENV AMP / raccourci. La fin de voix reste `aenv` (donc la release FILTRE). Parametres ajoutes en fin de liste : s_envLink, s_env2Dst, s_env2Amt.
 

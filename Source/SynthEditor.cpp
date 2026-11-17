@@ -645,15 +645,32 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
     // ---- 3. enveloppes et modulation (indices 4..6)
     {
         auto* u = unit ("ENVELOPE  -  FILTER");
+        envFltUnit = u;
         auto* a = knob (*u, "s_fA", "ATTACK"); auto* d = knob (*u, "s_fD", "DECAY"); auto* s = knob (*u, "s_fS", "SUSTAIN"); auto* r2 = knob (*u, "s_fR", "RELEASE");
         auto ev = std::make_unique<EnvView> (proc.apvts, 'f'); auto* evp = ev.get(); u->addAndMakeVisible (*ev); owned.push_back (std::move (ev));
         u->layoutFn = [=] (juce::Rectangle<int> r) { evp->setBounds (r.getX(), r.getY() + 2, 124, r.getHeight() - 4); place (r, { a, d, s, r2 }, 130, 60); };
     }
     {
+        // LINK : l'enveloppe FILTRE pilote aussi le volume ; ce panneau devient ENV 2, libre (matrice : source ENV AMP, ou raccourci DEST / AMOUNT)
         auto* u = unit ("ENVELOPE  -  AMP");
         auto* a = knob (*u, "s_aA", "ATTACK"); auto* d = knob (*u, "s_aD", "DECAY"); auto* s = knob (*u, "s_aS", "SUSTAIN"); auto* r2 = knob (*u, "s_aR", "RELEASE");
         auto ev = std::make_unique<EnvView> (proc.apvts, 'a'); auto* evp = ev.get(); u->addAndMakeVisible (*ev); owned.push_back (std::move (ev));
-        u->layoutFn = [=] (juce::Rectangle<int> r) { evp->setBounds (r.getX(), r.getY() + 2, 124, r.getHeight() - 4); place (r, { a, d, s, r2 }, 130, 60); };
+        auto* lk = toggle (*u, "s_envLink", "LINK");
+        lk->setTooltip ("LINK: the filter envelope also drives the amp - this envelope becomes ENV 2, free for modulation");
+        auto* dst = combo (*u, "s_env2Dst");
+        auto* amt = knob (*u, "s_env2Amt", "AMOUNT", "-", "+");
+        envLinkUnit = u; envLinkView = evp; envLinkDst = dst; envLinkAmt = amt;
+        u->layoutFn = [=] (juce::Rectangle<int> r)
+        {
+            const bool on = proc.apvts.getRawParameterValue ("s_envLink")->load() > 0.5f;
+            lk->setBounds (r.getX(), r.getY() + 2, 124, 22);
+            evp->setVisible (! on); dst->setVisible (on); amt->setVisible (on);
+            const auto side = juce::Rectangle<int> (r.getX(), r.getY() + 28, 124, r.getHeight() - 30);
+            evp->setBounds (side);
+            dst->setBounds (side.getX(), side.getY(), side.getWidth(), 22);
+            amt->setBounds (side.withTrimmedTop (24));
+            place (r, { a, d, s, r2 }, 130, 60);
+        };
     }
     {
         auto* u = unit ("LFO  /  S&H");
@@ -879,6 +896,13 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
 void SynthPanel::timerCallback()
 {
     for (auto* v : lfoViews) v->repaint();
+    if (envLinkUnit != nullptr)                                                         // LINK : titre et commandes du panneau AMP / ENV 2
+    {
+        const bool on = proc.apvts.getRawParameterValue ("s_envLink")->load() > 0.5f;
+        const juce::String t = on ? "ENV 2  -  FREE  (AMP = FILTER ENV)" : "ENVELOPE  -  AMP";
+        if (envLinkUnit->title != t || envLinkDst->isVisible() != on) { envLinkUnit->title = t; envLinkUnit->resized(); envLinkUnit->repaint(); }
+        if (envFltUnit != nullptr) { const juce::String tf = on ? "ENVELOPE  -  FILTER  +  AMP" : "ENVELOPE  -  FILTER"; if (envFltUnit->title != tf) { envFltUnit->title = tf; envFltUnit->repaint(); } }
+    }
     // le nom de chaque macro = destination de la premiere ligne de matrice qu'elle pilote
     for (size_t k = 0; k < macroKnobs.size(); ++k)
     {

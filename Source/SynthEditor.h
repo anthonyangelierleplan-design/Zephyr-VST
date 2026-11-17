@@ -150,6 +150,7 @@ private:
     std::vector<LfoView*> lfoViews;
     std::vector<std::shared_ptr<void>> idAttachments;
     juce::Image tex;
+    ModuleUnit* envLinkUnit = nullptr; ModuleUnit* envFltUnit = nullptr; juce::Component* envLinkView = nullptr; juce::ComboBox* envLinkDst = nullptr; KnobUnit* envLinkAmt = nullptr;   // LINK des enveloppes
 };
 
 // Fenetre redimensionnable : tout le contenu est dessine a la taille de conception puis mis a l'echelle.

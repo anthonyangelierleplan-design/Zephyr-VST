@@ -619,7 +619,7 @@ float ZephyrAudioProcessor::atShape (float x) const
 juce::String ZephyrAudioProcessor::midiMapToString() const
 {
     juce::String s ("M" + juce::String (takeoverMode.load()));
-    s << ";Q" << quality.load() << ";S" << ccSmooth.load() << ";AC" << atCurve.load() << ";AS" << atSpeed.load() << ";XM" << mpeOn.load() << ";XB" << mpeBend.load();
+    s << ";Q" << quality.load() << ";S" << ccSmooth.load() << ";AC" << atCurve.load() << ";AS" << atSpeed.load() << ";XM" << mpeOn.load() << ";XB" << mpeBend.load() << ";VP" << vcoPhase.load() << ";VM" << vcoModel.load();
     for (int i = 0; i < mapIds.size(); ++i)
     {
         const int cc = mapCc[(size_t) i].load();
@@ -636,7 +636,9 @@ void ZephyrAudioProcessor::midiMapFromString (const juce::String& str)
         if (tok.startsWith ("M") && ! tok.contains ("=")) { takeoverMode.store (juce::jlimit (0, 2, tok.substring (1).getIntValue())); continue; }
         if (! tok.contains ("="))                                               // reglages globaux : qualite, lissage, aftertouch
         {
-            if (tok.startsWith ("XM")) mpeOn.store (juce::jlimit (0, 1, tok.substring (2).getIntValue()));
+            if (tok.startsWith ("VP")) vcoPhase.store (juce::jlimit (0, 1, tok.substring (2).getIntValue()));
+            else if (tok.startsWith ("VM")) vcoModel.store (juce::jlimit (0, 1, tok.substring (2).getIntValue()));
+            else if (tok.startsWith ("XM")) mpeOn.store (juce::jlimit (0, 1, tok.substring (2).getIntValue()));
             else if (tok.startsWith ("XB")) mpeBend.store (juce::jlimit (0, 3, tok.substring (2).getIntValue()));
             else if (tok.startsWith ("AC")) atCurve.store (juce::jlimit (0, 3, tok.substring (2).getIntValue()));
             else if (tok.startsWith ("AS")) atSpeed.store (juce::jlimit (0, 5, tok.substring (2).getIntValue()));
@@ -993,6 +995,8 @@ void ZephyrAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
             if (upTo > pos) { synth.process (sl + pos, sr + pos, upTo - pos); pos = upTo; }
         };
         synth.setPerNoteAT (mpeNow && ! arpOn);
+        synth.setPhaseFree (vcoPhase.load() == 0);
+        synth.setVcoAnalog (vcoModel.load() == 0);
         for (const auto& e : evs)
         {
             const bool cont = e.type == 3 || e.type == 4 || e.type == 5 || e.type == 6 || e.type == 15;     // controles continus (lisses) : pas de decoupe a l'echantillon pres

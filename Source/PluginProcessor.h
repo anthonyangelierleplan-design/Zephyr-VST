@@ -106,6 +106,7 @@ public:
     std::atomic<int> quality { 1 };             // 0 performance, 1 qualite, 2 high fidelity
     std::atomic<int> ccSmooth { 3 };            // lissage des reglages : 0 off, 1 5 ms, 2 10 ms, 3 20 ms, 4 40 ms, 5 80 ms
     std::atomic<int> atCurve { 0 };             // courbe de l'aftertouch : 0 lineaire, 1 exponentielle, 2 logarithmique, 3 en S
+    std::atomic<int> vcoPhase { 0 }, vcoModel { 0 };   // VCO MODEL : 0 analogique (defaut) / 1 numerique pur   // SETTINGS > VCO PHASE : 0 libre (analogique, defaut) / 1 recalee a chaque note
     std::atomic<int> mpeOn { 0 }, mpeBend { 3 };   // MPE : 0 off / 1 on ; plage de bend par note : 0 +/-2, 1 +/-12, 2 +/-24, 3 +/-48 demi-tons
     std::atomic<int> atSpeed { 2 };             // reactivite de l'aftertouch : 0 instantanee ... 5 tres lente
     void settingChanged() { mapDirty.store (true); }

@@ -116,6 +116,23 @@ inline float blamp (float t, float dt)                                     // in
     if (t > 1.f - dt) { t = (t - 1.f) / dt + 1.f; return (1.f / 3.f) * t * t * t; }
     return 0.f;
 }
+inline float naive (int wave, float ph, float pw)                          // forme brute (sans correction) : sert a mesurer les sauts du hard sync
+{
+    switch (wave)
+    {
+        case 0: return 2.f * ph - 1.f;
+        case 1: return ph < pw ? 1.f : -1.f;
+        case 2: return 4.f * std::fabs (ph - 0.5f) - 1.f;
+        default: return std::sin (6.2831853f * ph);
+    }
+}
+// caractere analogique (SETTINGS > VCO MODEL) : rampe du VCO legerement courbee (condensateur qui se charge), sommets du triangle arrondis
+inline float analogShape (int wave, float y, float curve)
+{
+    if (wave == 0) return y + curve * (1.f - y * y);                   // dent de scie : rampe bombee, extremites inchangees (le saut reste le meme)
+    if (wave == 2) return (y - 0.05f * y * y * y) * (1.f / 0.95f);     // triangle : sommets arrondis
+    return y;                                                           // carre (affaissement par la liaison capacitive, plus bas), sinus : purs
+}
 inline float osc (int wave, float ph, float dt, float pw)
 {
     switch (wave)
@@ -589,6 +606,8 @@ public:
         for (int i = 0; i < kVoices; ++i)                                   // chaque "carte voix" a ses petites differences, fixes (derive analogique)
         {
             vCut[i] = rnd(); vEnv[i] = rnd(); vOff1[i] = rnd(); vOff2[i] = rnd();
+            vCrv1[i] = 0.06f * (1.f + 0.35f * rnd()); vCrv2[i] = 0.06f * (1.f + 0.35f * rnd());     // tolerances de chaque carte voix (VCO MODEL analogique)
+            vPw1[i] = 0.008f * rnd(); vPw2[i] = 0.008f * rnd(); vLv1[i] = 1.f + 0.03f * rnd(); vLv2[i] = 1.f + 0.03f * rnd();
             walk1[i] = walk2[i] = 0.f; walkT1[i] = rnd(); walkT2[i] = rnd();
         }
     }
@@ -612,6 +631,8 @@ public:
     void setPolyAT (int note, float a) { for (auto& v : voices) if (v.active && v.note == note) v.pat = a; }
     // MPE (Hydrasynth en mode MPE) : chaque note a sa pression et son pitch bend ; la source POLY AT suit alors la pression de SA note
     void setPerNoteAT (bool on) { perNoteAT = on; }
+    void setPhaseFree (bool on) { phaseFree = on; }
+    void setVcoAnalog (bool on) { vcoAnalog = on; }          // SETTINGS > VCO MODEL : analogique (rampe courbee, liaison capacitive, tolerances) ou numerique pur          // SETTINGS > VCO PHASE : oscillateurs libres (comme en analogique) ou recales a chaque note
     void setNoteBend (int note, float semis) { for (auto& v : voices) if (v.active && v.note == note) v.nBend = semis; }
 
     // ---- touches : l'interpretation depend du mode d'affectation (POLY, MONO, UNISON, SHARE, CHORD MEMORY) et de HOLD
@@ -746,7 +767,7 @@ private:
         bool active = false; int note = 60; float vel = 1.f; uint64_t age = 0;
         bool gated = false, raw = false; int slot = -1; float uniCents = 0.f, uniPan = 0.f, gainV = 1.f;
         sy::Env aenv, fenv, e2; float pitch = 60.f, ph1 = 0.f, ph2 = 0.f, prev1 = 0.f, prev2 = 0.f, fmT = 0.f;
-        sy::Hp hp; sy::Ms10 ms; sy::Cem3320 cem; sy::SemCkt sck; sy::ProphetSsm pro; bool subFlip = false; float fmK = 1.f; float pat = 0.f, pat1 = 0.f, patS = 0.f, nBend = 0.f, nBendS = 0.f, slide = 0.f, rndv = 0.f; float xPrev = 0.f, drvLp = 0.f; sy::OverVar osF, osD, osV; bool cInit = false; float c0[20] {}; float lph[kLfos] {}, lfade[kLfos] {}, lsh[kLfos] {}, lcur[kLfos] {}; float envM[9] {};     // envM : modulation des enveloppes (bloc precedent)
+        sy::Hp hp; sy::Ms10 ms; sy::Cem3320 cem; sy::SemCkt sck; sy::ProphetSsm pro; bool subFlip = false; float fmK = 1.f; float pat = 0.f, pat1 = 0.f, patS = 0.f, nBend = 0.f, nBendS = 0.f, slide = 0.f, rndv = 0.f; float xPrev = 0.f, drvLp = 0.f; sy::OverVar osF, osD, osV; float dl1 = 0.f, dl2 = 0.f, dls = 0.f, ac1x = 0.f, ac1y = 0.f, ac2x = 0.f, ac2y = 0.f; sy::HalfBand<23> dsA; sy::HalfBand<15> dsB; bool cInit = false; float c0[20] {}; float lph[kLfos] {}, lfade[kLfos] {}, lsh[kLfos] {}, lcur[kLfos] {}; float envM[9] {};     // envM : modulation des enveloppes (bloc precedent)
     };
     static constexpr int kKeys = 16;
     struct Key { int note; float vel; bool phys; uint64_t t; };
@@ -755,9 +776,10 @@ private:
     uint64_t stamp = 0;
     Voice voices[kVoices];
     SynthParams P;
-    bool perNoteAT = false;
+    bool perNoteAT = false, phaseFree = true, vcoAnalog = true;
     float fs = 44100.f, bpm = 120.f, wheel = 0.f, bend = 0.f, gPhase[kLfos] {}, gSh[kLfos] {}, gCur[kLfos] {};
     float laneT[kLanes] {}, laneC[kLanes] {};
+    float vCrv1[kVoices] {}, vCrv2[kVoices] {}, vPw1[kVoices] {}, vPw2[kVoices] {}, vLv1[kVoices] {}, vLv2[kVoices] {};
     float vCut[kVoices] {}, vEnv[kVoices] {}, vOff1[kVoices] {}, vOff2[kVoices] {}, walk1[kVoices] {}, walk2[kVoices] {}, walkT1[kVoices] {}, walkT2[kVoices] {};
     uint64_t counter = 0; int lastNote = -1; uint32_t seed = 12345u;
     float atTau = 0.012f, atSc = 1.f, chanAT1 = 0.f, chanATs = 0.f, wheelT = 0.f, wheel1 = 0.f;
@@ -823,7 +845,7 @@ private:
         v->active = true; v->gated = true; v->raw = raw; v->slot = slot; v->note = note; v->vel = vel; v->age = ++counter;
         v->uniCents = cents; v->uniPan = pan; v->gainV = gain;
         v->pitch = glide ? (float) lastNote : (float) note;
-        if (P.drift > 0.001f) { v->ph1 = rndU(); v->ph2 = rndU(); }        // oscillateurs libres : chaque note demarre ailleurs dans le cycle
+        if (phaseFree) { v->ph1 = rndU(); v->ph2 = rndU(); v->subFlip = rndU() < 0.5f; }   // oscillateurs libres : chaque note demarre ailleurs dans le cycle (sinon : toujours au meme point)
         v->aenv.on(); v->fenv.on(); v->e2.on(); lastVel = vel;
         v->rndv = rnd(); lastRnd = v->rndv; lastKey = std::max (-1.f, std::min (1.f, ((float) note - 60.f) / 48.f));
         for (int i = 0; i < kLfos; ++i) { v->lph[i] = 0.f; v->lfade[i] = 0.f; v->lsh[i] = rnd(); v->lcur[i] = v->lsh[i]; }
@@ -1049,6 +1071,9 @@ private:
         const float pan = std::min (1.f, std::max (-1.f, md[MdPan] + v.uniPan));
         const float gl = std::sqrt (0.5f * (1.f - pan)), gr = std::sqrt (0.5f * (1.f + pan));
         const float dt1 = f1 / fs, dt2 = f2 / fs;
+        const int facOsc = P.quality >= 2 ? 4 : 2;                                          // surechantillonnage des VCO
+        const float acA = std::exp (-6.2831853f * 5.f / (fs * (float) facOsc));             // liaison capacitive des VCO analogiques (~5 Hz)
+        const float dt1s = dt1 / (float) facOsc, dt2s = dt2 / (float) facOsc, noiseK = 0.7f * std::sqrt ((float) facOsc);   // le bruit garde son niveau apres decimation
         // valeurs de controle : calculees une fois par bloc de 16 echantillons, puis INTERPOLEES echantillon par echantillon (pas de marches)
         const int facFlt = P.quality <= 0 ? 2 : (P.quality == 1 ? 4 : 8), facFx = P.quality >= 2 ? 8 : 4;
         float c1[20] = { gL, gH, kL, kH, kSem, kLad, res, morph, drive, drvEmph, foldA, foldS, level, lv1, l2, noiseA, 0.f, 0.f, 0.f, 0.f };
@@ -1071,39 +1096,80 @@ private:
             const float foldA = cc[10], foldS = cc[11], level = cc[12], lv1 = cc[13], l2 = cc[14], noiseA = cc[15];
             // FM audio (sens au choix) ; VCO2 est recale par VCO1 si le hard sync est actif
             // increments de phase bornes sous Nyquist (une FM extreme sur une note aigue pouvait les faire exploser -> phase hors [0,1[ -> NaN)
-            const float pm = pmOn ? pmE + pmO * v.prev2 : 0.f;                              // poly-mod (valeur du VCO 2 de l'echantillon precedent)
-            const float pmF = (pmOn && P.pmFreq) ? std::exp2 (pm * 3.f) : 1.f;
-            float inc1, inc2, pm1 = 0.f, pm2 = 0.f;
-            if (P.fmType == 0)                                                    // FM exponentielle (analogique) : la profondeur module la frequence en octaves
+            // section VCO surechantillonnee (x2, x4 en High Fidelity) : dent de scie, carre, sync, FM, retour et poly-mod restent propres jusque dans l'aigu
+            float xs[4], pmLast = 0.f;
+            for (int ko = 0; ko < facOsc; ++ko)
             {
-                const float fb = P.fmFb * 1.2f;
-                inc1 = std::min (0.49f, std::max (0.f, ((P.fmDir != 1 && fmA > 1e-5f) ? dt1 * std::pow (2.f, fmA * 2.5f * v.prev2) : dt1) * pmF));
-                inc2 = std::min (0.49f, std::max (0.f, (P.fmDir != 0 && fmA > 1e-5f) ? dt2 * std::pow (2.f, fmA * 2.5f * v.prev1) : dt2));
-                if (fb > 1e-4f) { if (P.fmDir != 1) inc2 = std::min (0.49f, inc2 * std::pow (2.f, fb * v.prev2)); if (P.fmDir != 0) inc1 = std::min (0.49f, inc1 * std::pow (2.f, fb * v.prev1)); }
+                const float pm = pmOn ? pmE + pmO * v.prev2 : 0.f;                              // poly-mod (valeur du VCO 2 de l'echantillon precedent)
+                pmLast = pm;
+                const float pmF = (pmOn && P.pmFreq) ? std::exp2 (pm * 3.f) : 1.f;
+                float inc1, inc2, pm1 = 0.f, pm2 = 0.f;
+                if (P.fmType == 0)                                                    // FM exponentielle (analogique) : la profondeur module la frequence en octaves
+                {
+                    const float fb = P.fmFb * 1.2f;
+                    inc1 = std::min (0.49f, std::max (0.f, ((P.fmDir != 1 && fmA > 1e-5f) ? dt1s * std::pow (2.f, fmA * 2.5f * v.prev2) : dt1s) * pmF));
+                    inc2 = std::min (0.49f, std::max (0.f, (P.fmDir != 0 && fmA > 1e-5f) ? dt2s * std::pow (2.f, fmA * 2.5f * v.prev1) : dt2s));
+                    if (fb > 1e-4f) { if (P.fmDir != 1) inc2 = std::min (0.49f, inc2 * std::pow (2.f, fb * v.prev2)); if (P.fmDir != 0) inc1 = std::min (0.49f, inc1 * std::pow (2.f, fb * v.prev1)); }
+                }
+                else                                                                  // FM lineaire (modulation de phase) : la hauteur reste stable, comme sur un DX
+                {
+                    inc1 = std::min (0.49f, dt1s * pmF); inc2 = std::min (0.49f, dt2s);
+                    const float beta = fmA * fmA * 12.f / 6.2831853f;                 // indice en cycles : 0..~1,9 (12 rad) ; courbe quadratique = reglage fin des petits indices
+                    const float fbc = P.fmFb * P.fmFb * 7.f / 6.2831853f;
+                    if (fmA > 1e-5f) { if (P.fmDir != 1) pm1 = beta * v.prev2; if (P.fmDir != 0) pm2 = beta * v.prev1; }
+                    if (fbc > 1e-5f) { if (P.fmDir != 1) pm2 += fbc * v.prev2; if (P.fmDir != 0) pm1 += fbc * v.prev1; }
+                }
+                v.ph1 += inc1;
+                float syncJ = 0.f, syncX = 0.f; bool synced = false;
+                if (v.ph1 >= 1.f)
+                {
+                    v.ph1 -= std::floor (v.ph1); v.subFlip = ! v.subFlip;
+                    if (P.sync)
+                    {
+                        // hard sync anti-repliement : instant exact du recalage (fraction d'echantillon), saut de la forme du VCO 2 a cet instant,
+                        // puis correction polyBLEP de part et d'autre du saut (l'echantillon precedent est retenu un echantillon pour ca)
+                        syncX = std::min (1.f, v.ph1 / std::max (inc1, 1e-6f));                     // temps ecoule depuis le recalage, en echantillons
+                        float pw = v.ph2 + inc2 * (1.f - syncX); pw -= std::floor (pw);            // phase du VCO 2 juste avant le recalage
+                        syncJ = sy::naive (P.wave2, 0.f, pw2) - sy::naive (P.wave2, pw, pw2);
+                        synced = pm2 == 0.f;
+                        v.ph2 = syncX * inc2 - inc2;                                                 // apres l'increment ci-dessous : syncX * inc2 (avant : un echantillon d'avance)
+                    }
+                }
+                v.ph2 += inc2; if (v.ph2 >= 1.f) v.ph2 -= std::floor (v.ph2);
+                auto wrapP = [] (float x) { return x - std::floor (x); };
+                const float pwA = (pmOn && P.pmPw) ? std::min (0.95f, std::max (0.05f, pw1 + pm * 0.4f)) : pw1;
+                const float pwT1 = vcoAnalog ? std::min (0.95f, std::max (0.05f, pwA + vPw1[vi])) : pwA, pwT2 = vcoAnalog ? std::min (0.95f, std::max (0.05f, pw2 + vPw2[vi])) : pw2;
+                const float o1 = sy::osc (P.wave1, pm1 != 0.f ? wrapP (v.ph1 + pm1) : v.ph1, std::min (0.45f, inc1), pwT1);
+                const float o2 = sy::osc (P.wave2, pm2 != 0.f ? wrapP (v.ph2 + pm2) : v.ph2, std::min (0.45f, inc2), pwT2);
+                if (P.fmWave == 0) { v.prev1 = o1; v.prev2 = o2; }
+                else                                                                  // modulateur dedie : sinus, triangle ou carre
+                {
+                    auto m = [this] (float ph, float inc) { return P.fmWave == 1 ? std::sin (6.2831853f * ph) : sy::osc (P.fmWave == 2 ? 2 : 1, ph, std::min (0.45f, inc), 0.5f); };
+                    v.prev1 = m (v.ph1, inc1); v.prev2 = m (v.ph2, inc2);
+                }
+                // sortie des VCO retardee d'un echantillon : laisse le temps de corriger le saut du hard sync des deux cotes
+                float o2c = o2;
+                if (synced)
+                {
+                    const float x1 = syncX, jA = P.wave2 == 0 ? -2.f : (P.wave2 == 1 ? 2.f : 0.f);   // saut deja corrige par osc() en debut de cycle (dent de scie / carre)
+                    v.dl2 += syncJ * 0.5f * (x1 * x1);                                       // avant le saut : l'echantillon retenu monte vers lui
+                    o2c += (syncJ - jA) * -0.5f * (1.f - x1) * (1.f - x1);                   // apres le saut : complement de la correction d'osc()
+                }
+                float o1n = o1;
+                if (vcoAnalog)                                                         // VCO analogique : forme, liaison capacitive (~5 Hz : le carre s'affaisse dans le grave), tolerances
+                {
+                    o1n = sy::analogShape (P.wave1, o1, vCrv1[vi]) * vLv1[vi]; o2c = sy::analogShape (P.wave2, o2c, vCrv2[vi]) * vLv2[vi];
+                    const float y1 = acA * (v.ac1y + o1n - v.ac1x); v.ac1x = o1n; v.ac1y = y1; o1n = y1;
+                    const float y2 = acA * (v.ac2y + o2c - v.ac2x); v.ac2x = o2c; v.ac2y = y2; o2c = y2;
+                }
+                const float o1e = v.dl1, o2e = v.dl2; v.dl1 = o1n; v.dl2 = o2c;
+                float xk = o1e * lv1 + o2e * l2 + o1e * o2e * ringA * 1.4f + rnd() * noiseA * noiseK;
+                if (subA > 0.0005f) { const float phs = v.ph1 * 0.5f + (v.subFlip ? 0.5f : 0.f); const float so = v.dls; v.dls = sy::osc (1, phs, std::min (0.45f, inc1 * 0.5f), 0.5f); xk += so * subA * 0.8f; }   // sub : carre une octave sous le VCO 1
+                xs[ko] = xk;
             }
-            else                                                                  // FM lineaire (modulation de phase) : la hauteur reste stable, comme sur un DX
-            {
-                inc1 = std::min (0.49f, dt1 * pmF); inc2 = std::min (0.49f, dt2);
-                const float beta = fmA * fmA * 12.f / 6.2831853f;                 // indice en cycles : 0..~1,9 (12 rad) ; courbe quadratique = reglage fin des petits indices
-                const float fbc = P.fmFb * P.fmFb * 7.f / 6.2831853f;
-                if (fmA > 1e-5f) { if (P.fmDir != 1) pm1 = beta * v.prev2; if (P.fmDir != 0) pm2 = beta * v.prev1; }
-                if (fbc > 1e-5f) { if (P.fmDir != 1) pm2 += fbc * v.prev2; if (P.fmDir != 0) pm1 += fbc * v.prev1; }
-            }
-            v.ph1 += inc1;
-            if (v.ph1 >= 1.f) { v.ph1 -= std::floor (v.ph1); v.subFlip = ! v.subFlip; if (P.sync) v.ph2 = v.ph1 * inc2 / std::max (inc1, 1e-6f); }
-            v.ph2 += inc2; if (v.ph2 >= 1.f) v.ph2 -= std::floor (v.ph2);
-            auto wrapP = [] (float x) { return x - std::floor (x); };
-            const float pwA = (pmOn && P.pmPw) ? std::min (0.95f, std::max (0.05f, pw1 + pm * 0.4f)) : pw1;
-            const float o1 = sy::osc (P.wave1, pm1 != 0.f ? wrapP (v.ph1 + pm1) : v.ph1, std::min (0.45f, inc1), pwA);
-            const float o2 = sy::osc (P.wave2, pm2 != 0.f ? wrapP (v.ph2 + pm2) : v.ph2, std::min (0.45f, inc2), pw2);
-            if (P.fmWave == 0) { v.prev1 = o1; v.prev2 = o2; }
-            else                                                                  // modulateur dedie : sinus, triangle ou carre
-            {
-                auto m = [this] (float ph, float inc) { return P.fmWave == 1 ? std::sin (6.2831853f * ph) : sy::osc (P.fmWave == 2 ? 2 : 1, ph, std::min (0.45f, inc), 0.5f); };
-                v.prev1 = m (v.ph1, inc1); v.prev2 = m (v.ph2, inc2);
-            }
-            float x = o1 * lv1 + o2 * l2 + o1 * o2 * ringA * 1.4f + rnd() * noiseA * 0.7f;
-            if (subA > 0.0005f) { const float phs = v.ph1 * 0.5f + (v.subFlip ? 0.5f : 0.f); x += sy::osc (1, phs, std::min (0.45f, inc1 * 0.5f), 0.5f) * subA * 0.8f; }   // sub : carre une octave sous le VCO 1
+            float x;
+            if (facOsc == 2) x = v.dsA.down (xs[0], xs[1]);
+            else { const float h0 = v.dsB.down (xs[0], xs[1]); const float h1 = v.dsB.down (xs[2], xs[3]); x = v.dsA.down (h0, h1); }   // dans l'ordre (l'ordre d'evaluation des arguments n'est pas garanti)
             x = v.osF.run (x, facFx, [foldA, foldS] (float u) { return sy::fold (u, foldA, foldS); });      // wavefolder surechantillonne x4 (plus de repliement de spectre)
             const float hp = v.hp.run (x * 0.7f, gH, kH);                  // HPF puis LPF, comme sur le MS20
             // DRIVE "shiny" : on accentue le haut du spectre AVANT la saturation (les graves gonflent moins, les harmoniques brillent), puis on rend le niveau
@@ -1113,7 +1179,7 @@ private:
             const float dBias = 0.06f * (drive - 1.f), dOff = std::tanh (dBias), dNorm = 1.f / (1.f + 0.12f * (drive - 1.f));
             const float dx = v.osD.run (dIn, facFx, [drive, dBias, dOff, dNorm] (float u) { return (sy::tanhFast (u * drive + dBias) - dOff) * dNorm; });   // saturation surechantillonnee x4
             float lp;
-            const float gLm = (pmOn && P.pmFilt) ? std::min (gMaxL, gL * std::exp2 (pm * 3.f)) : gL;     // poly-mod vers le filtre (circuits Ladder / SEM / Prophet)
+            const float gLm = (pmOn && P.pmFilt) ? std::min (gMaxL, gL * std::exp2 (pmLast * 3.f)) : gL;     // poly-mod vers le filtre (circuits Ladder / SEM / Prophet)
             if (P.ftype == 0)      lp = v.ms.run (dx, cc[16], cc[17], cc[18], msC);
             else if (P.ftype == 1)
             {
@@ -1134,7 +1200,7 @@ private:
             const float y = lp * a * level * v.gainV * (0.35f + 0.65f * v.vel);
             if (! (std::fabs (y) < 8.f))                                   // garde-fou : NaN, infini ou valeur folle -> on remet les etats a zero (jamais de bruit ni de blocage)
             {
-                v.hp = sy::Hp(); v.ms.reset(); v.cem.reset(); v.sck.reset(); v.pro.reset(); v.drvLp = 0.f; v.xPrev = 0.f; v.prev1 = v.prev2 = 0.f; v.osF = sy::OverVar(); v.osD = sy::OverVar(); v.osV = sy::OverVar();
+                v.hp = sy::Hp(); v.ms.reset(); v.cem.reset(); v.sck.reset(); v.pro.reset(); v.drvLp = 0.f; v.xPrev = 0.f; v.prev1 = v.prev2 = 0.f; v.osF = sy::OverVar(); v.osD = sy::OverVar(); v.osV = sy::OverVar(); v.dsA = sy::HalfBand<23>(); v.dsB = sy::HalfBand<15>(); v.dl1 = v.dl2 = v.dls = 0.f;
                 if (! std::isfinite (v.ph1)) v.ph1 = 0.f;
                 if (! std::isfinite (v.ph2)) v.ph2 = 0.f;
                 continue;

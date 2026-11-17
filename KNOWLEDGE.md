@@ -149,3 +149,9 @@ Table de données (tools/presets/presets.py) → code C++ → banc de test qui j
 - Processeur : TYPE SEQ force ap.on = 1 (sauf enregistrement pas a pas).
 - LINK des enveloppes : le VCA doit rester au rythme audio -> quand LINK est allume, l'enveloppe audio `aenv` est simplement cadencee avec les reglages FILTRE (pas de marches d'un bloc), et une 3e enveloppe `e2` (reglages AMP, cadencee au bloc) sert de source ENV AMP / raccourci. La fin de voix reste `aenv` (donc la release FILTRE). Parametres ajoutes en fin de liste : s_envLink, s_env2Dst, s_env2Amt.
 
+## v3c : VCO
+- Mesurer le repliement : FFT fenetre Blackman-Harris (Blackman simple : ses lobes a -58 dB autour de la fondamentale faussent la mesure), f0 exacte par passages a zero, pire raie hors harmoniques sous 16 kHz.
+- Hard sync : instant du recalage = (depassement de phase du VCO 1) / increment ; saut J = forme(0) - forme(phase du VCO 2 a cet instant) ; polyBLEP : echantillon precedent += J*x^2/2, echantillon courant += J*(-(1-x)^2/2) moins ce qu'osc() corrige deja (saut -2 dent de scie, +2 carre) ; sortie des VCO retardee d'un echantillon. Bug corrige : apres recalage, ph2 doit valoir x*inc2 (on retire inc2 avant l'increment).
+- Surechantillonnage : boucle de facOsc sous-echantillons autour de toute la section VCO, puis decimation demi-bande (23 puis 15 coefficients). Appeler les deux down() du x4 dans des instructions separees (ordre d'evaluation des arguments non garanti en C++ -> son faux en High Fidelity). Bruit x sqrt(facOsc) pour garder son niveau.
+- Phase libre : phase aleatoire a chaque nouvelle voix (Zephyr ne le faisait que si DRIFT > 0).
+

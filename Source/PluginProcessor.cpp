@@ -143,7 +143,7 @@ const std::vector<SynDef>& synDefs()
         {
             const juce::String p ("s_slot" + juce::String (i)), n ("Mod " + juce::String (i));
             C (p + "Src", n + " Source", srcs.joinIntoString ("|"), 0);  C (p + "Dst", n + " Dest", dsts.joinIntoString ("|"), 0);
-            F (p + "Amt", n + " Amount", -1, 1, 0);
+            F (p + "Amt", n + " Amount", 0, 1, 0);                                     // quantite (0..1) ; le sens est dans s_slotNDir
         }
         F ("s_fold", "Wavefolder", 0, 1, 0);  F ("s_foldSym", "Fold Symmetry", -1, 1, 0);
         C ("s_arpOn", "Arp", "Off|On|Latch", 0);
@@ -170,14 +170,16 @@ const std::vector<SynDef>& synDefs()
               F (q + "Amt", "Lane " + juce::String (k) + " Amount", -1, 1, 0.5f);
               F (q + "Glide", "Lane " + juce::String (k) + " Glide", 0, 1, 0);
           } }
-        C ("s_fmDir", "FM Direction", "2>1|1>2|Both", 0);  C ("s_fmRatio", "FM Ratio", "Free|1:2|2:3|1:1|3:2|2:1|3:1|4:1|5:1|7:1|7:2|x1.41", 0);  C ("s_fmWave", "FM Wave", "Osc|Sine|Tri|Square", 0);
+        C ("s_fmDir", "FM Direction", "2>1|1>2|Both", 0);  C ("s_fmRatio", "FM Ratio", "Free|1:2|2:3|1:1|3:2|2:1|3:1|4:1|5:1|7:1|7:2|x1.41|5:2|9:2|6:1|8:1|x2.76|x5.4", 0);  C ("s_fmWave", "FM Wave", "Osc|Sine|Tri|Square", 0);
         F ("s_fmFine", "FM Fine", -1, 1, 0);  F ("s_fmAtt", "FM Attack", 0, 1, 0);  F ("s_fmDec", "FM Decay", 0, 1, 0.4f);
         F ("s_fmEnvAmt", "FM Env Amount", 0, 1, 0);  F ("s_fmVel", "FM Velocity", 0, 1, 0);  F ("s_fmAT", "FM Aftertouch", 0, 1, 0);
         C ("s_arpType", "Arp Type", "Arp|Seq", 0);  B ("s_seqRec", "Step Record", false);
-        { juce::StringArray br; for (int k = 1; k <= 24; ++k) br.add ("Bend +/-" + juce::String (k) + " st"); C ("s_bendRange", "Pitch Bend Range", br.joinIntoString ("|"), 1); }
-        F ("s_fltLfo", "Filter LFO1 Amount", 0, 1, 0);
+        { juce::StringArray br; for (int k = 1; k <= 24; ++k) br.add ("+/-" + juce::String (k) + " st"); C ("s_bendRange", "Pitch Bend Range", br.joinIntoString ("|"), 1); }
+        F ("s_fltLfo", "Filter LFO2 Amount", 0, 1, 0);
         C ("s_arpRatchet", "Arp Ratchet", "1x|2x|3x|4x", 0);  B ("s_arpTriplet", "Arp Triplet", false);
         F ("s_vib", "VCO1 LFO Amount", 0, 1, 0);  F ("s_vibWheel", "VCO1 LFO + Wheel", 0, 1, 0);  F ("s_vibAT", "VCO1 LFO + Aftertouch", 0, 1, 0);
+        C ("s_fmType", "FM Type", "Exponential|Linear (DX)", 0);  F ("s_fmFb", "FM Feedback", 0, 1, 0);  F ("s_fmKey", "FM Key Scaling", 0, 1, 0);
+        for (int i = 1; i <= kSlots; ++i) C ("s_slot" + juce::String (i) + "Dir", "Mod " + juce::String (i) + " Direction", "Forward|Backward|Both", 0);       // sens de chaque routage (v22)
         return v;
     }();
     return defs;
@@ -208,14 +210,17 @@ void S (ZephyrAudioProcessor& p, std::initializer_list<KV> l)
         const juce::String id (kv.first);
         float v = kv.second;
         if (id == "s_ftype") { const int f = juce::roundToInt (v); v = f == 10 ? 0.f : (f == 1 ? 1.f : (f == 2 ? 3.f : 2.f)); }
-        if (id.startsWith ("s_l") && id.endsWith ("Rate") && id.length() == 8) v *= 0.7677f;
+        if (id.startsWith ("s_l") && id.endsWith ("Rate") && id.length() == 8) v *= 0.6750f;      // plage des LFO de la v1 (0,05..40 Hz) -> plage actuelle (0,05..1000 Hz) : meme vitesse
         p.setParamReal (kv.first, v);
     }
 }
 void M (ZephyrAudioProcessor& p, int slot, int src, int dst, float amt)
 {
     const juce::String b ("s_slot" + juce::String (slot));
-    p.setParamReal ((b + "Src").toRawUTF8(), (float) src); p.setParamReal ((b + "Dst").toRawUTF8(), (float) dst); p.setParamReal ((b + "Amt").toRawUTF8(), amt);
+    // les presets sont ecrits avec une quantite signee : on la traduit en (quantite, sens). Sources bipolaires (LFO, key, random) : LES DEUX ; sinon signe + = AVANT, signe - = ARRIERE
+    const int dir = zephyr::srcBipolar (src) ? 2 : (amt < 0.f ? 1 : 0);
+    p.setParamReal ((b + "Src").toRawUTF8(), (float) src); p.setParamReal ((b + "Dst").toRawUTF8(), (float) dst); p.setParamReal ((b + "Amt").toRawUTF8(), std::fabs (amt));
+    p.setParamReal ((b + "Dir").toRawUTF8(), (float) dir);
 }
 void fInit (ZephyrAudioProcessor&) {}
 
@@ -539,7 +544,7 @@ ZephyrAudioProcessor::ZephyrAudioProcessor()
             if (mapIds.size() < kMaxMap) { mapIds.add (rp->paramID); mapParams.push_back (rp); }
     for (auto& c : mapCc) c.store (-1);
     for (auto& v : hwPos) v = -1.f;
-    for (int i = 0; i < kMaxMap; ++i) { lastSetV[i] = -1.f; aCur[i] = aHw[i] = lastIn[i] = 0.f; caught[i] = anchored[i] = false; }
+    for (int i = 0; i < kMaxMap; ++i) { lastDir[i] = 0; lastSetV[i] = -1.f; aCur[i] = aHw[i] = lastIn[i] = 0.f; caught[i] = anchored[i] = false; }
     resetMidiMap();
     if (const auto f = midiMapFile(); f.existsAsFile()) midiMapFromString (f.loadFileAsString());
     mapDirty.store (false);
@@ -563,7 +568,7 @@ int ZephyrAudioProcessor::defaultCcOf (const juce::String& id) const
         { "dlyFb", 14 }, { "dlyTime", 15 },
         { "s_pw1", 24 }, { "s_pw2", 26 }, { "s_fm", 30 },                   // wavscan OSC1/OSC2 -> largeur d'impulsion ; Mutator1 Depth -> FM
         { "s_ring", 43 }, { "s_lvl1", 44 }, { "s_lvl2", 46 },               // RM12 Depth ; OSC1 Vol ; OSC2 Vol
-        { "s_drive", 50 }, { "s_key", 51 }, { "s_fltEnv", 54 }, { "s_fltLfo", 52 },             // Filter1 Drive / Keytrack / LFO1amt / ENV1amt
+        { "s_drive", 50 }, { "s_key", 51 }, { "s_fltEnv", 54 }, { "s_fltLfo", 52 },             // Filter1 Drive / Keytrack / LFO2amt / ENV1amt
         { "s_hpf", 55 }, { "s_hpfRes", 56 },                                // Filter2 Cutoff / Res -> passe-haut
         { "dlyTone", 63 }, { "revDecay", 65 }, { "revDamp", 67 },          // delay tone ; reverb time / tone
         { "s_lpfRes", 71 }, { "s_l1Rate", 72 }, { "s_l2Rate", 73 }, { "s_lpf", 74 }, { "s_l3Rate", 76 }, { "s_l4Rate", 78 },
@@ -579,6 +584,12 @@ void ZephyrAudioProcessor::resetMidiMap()
 {
     for (auto& c : mapCc) c.store (-1);
     for (int i = 0; i < mapIds.size(); ++i) mapCc[(size_t) i].store (defaultCcOf (mapIds[i]));
+    for (int i = 0; i < kMaxMap; ++i) anchored[i] = caught[i] = false;
+    learnIdx.store (-1); mapDirty.store (true);
+}
+void ZephyrAudioProcessor::clearAllMidiAssign()
+{
+    for (int i = 0; i < mapIds.size(); ++i) mapCc[(size_t) i].store (-1);
     for (int i = 0; i < kMaxMap; ++i) anchored[i] = caught[i] = false;
     learnIdx.store (-1); mapDirty.store (true);
 }
@@ -606,7 +617,7 @@ float ZephyrAudioProcessor::atShape (float x) const
 juce::String ZephyrAudioProcessor::midiMapToString() const
 {
     juce::String s ("M" + juce::String (takeoverMode.load()));
-    s << ";Q" << quality.load() << ";S" << ccSmooth.load() << ";AC" << atCurve.load() << ";AS" << atSpeed.load();
+    s << ";Q" << quality.load() << ";S" << ccSmooth.load() << ";AC" << atCurve.load() << ";AS" << atSpeed.load() << ";XM" << mpeOn.load() << ";XB" << mpeBend.load();
     for (int i = 0; i < mapIds.size(); ++i)
     {
         const int cc = mapCc[(size_t) i].load();
@@ -623,7 +634,9 @@ void ZephyrAudioProcessor::midiMapFromString (const juce::String& str)
         if (tok.startsWith ("M") && ! tok.contains ("=")) { takeoverMode.store (juce::jlimit (0, 2, tok.substring (1).getIntValue())); continue; }
         if (! tok.contains ("="))                                               // reglages globaux : qualite, lissage, aftertouch
         {
-            if (tok.startsWith ("AC")) atCurve.store (juce::jlimit (0, 3, tok.substring (2).getIntValue()));
+            if (tok.startsWith ("XM")) mpeOn.store (juce::jlimit (0, 1, tok.substring (2).getIntValue()));
+            else if (tok.startsWith ("XB")) mpeBend.store (juce::jlimit (0, 3, tok.substring (2).getIntValue()));
+            else if (tok.startsWith ("AC")) atCurve.store (juce::jlimit (0, 3, tok.substring (2).getIntValue()));
             else if (tok.startsWith ("AS")) atSpeed.store (juce::jlimit (0, 5, tok.substring (2).getIntValue()));
             else if (tok.startsWith ("Q")) quality.store (juce::jlimit (0, 2, tok.substring (1).getIntValue()));
             else if (tok.startsWith ("S")) ccSmooth.store (juce::jlimit (0, 5, tok.substring (1).getIntValue()));
@@ -733,6 +746,8 @@ zephyr::SynthParams ZephyrAudioProcessor::readSynth()
     s.fltLfo = f();
     arpParams.ratchet = n() + 1; arpTriplet = b();
     s.vib = f(); s.vibWheel = f(); s.vibAT = f();
+    s.fmType = n(); s.fmFb = f(); s.fmKey = f();
+    for (auto& sl : s.slot) sl.dir = n();
     jassert (i == rawSyn.size());
     s.quality = quality.load();
     {                                                                       // lissage des reglages (pas de crenelage quand on tourne un potard MIDI 7 bits)
@@ -789,12 +804,12 @@ void ZephyrAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
                 }
                 if (multi) lastMultiChan = sampleClock;
                 mpeActive = sampleClock - lastMultiChan < (juce::int64) (30.0 * (getSampleRate() > 0.0 ? getSampleRate() : 48000.0));
+                mpeNow = mpeOn.load() != 0 || mpeActive;                                      // MPE : mode choisi dans SETTINGS, ou detecte tout seul
             }
             for (const auto meta : midi)
             {
                 const auto m = meta.getMessage();
-                if (mpeActive && m.getChannel() != 1 && m.isController() && m.getControllerNumber() != 64) continue;    // MPE : les CC des canaux de notes (74 = timbre par note) ne touchent pas aux potards (seul le canal maitre 1 pilote)
-                if (m.isController()) { const int c = m.getControllerNumber(); lastCcV[c] = m.getControllerValue(); seen[c] = true; }
+                if (m.isController() && ! (mpeNow && m.getChannel() >= 2 && m.getControllerNumber() == 74)) { const int c = m.getControllerNumber(); lastCcV[c] = m.getControllerValue(); seen[c] = true; }
             }
             for (int c = 0; c < 128; ++c) if (seen[c]) handleCC (c, lastCcV[c]);
         }
@@ -816,19 +831,16 @@ void ZephyrAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         arp.setParams (ap);
         const bool arpOn = ap.on != 0;
         if (recActive != lastRec) { lastRec = recActive; synth.allNotesOff(); arp.allOff(); if (recActive) arpPat.recPos = 0; }
-        if (ap.on != lastArpOn) { lastArpOn = ap.on; lastAssign = ap.assign; synth.allNotesOff(); arp.allOff(); }
-        if (ap.assign != lastAssign) { lastAssign = ap.assign; arp.resetVoices(); }     // changer de mode ne coupe pas l'arpege : les touches restent, le motif continue
+        {   // arpegiateur allume / eteint : on repart propre. Mode de jeu change : sans arpege, le synthe reprend les notes tenues lui-meme (aucune coupure) ;
+            // avec l'arpege, il NE S'ARRETE PAS : les notes en cours sont relachees proprement et le motif continue (Zephyr, facon Mono/Poly)
+            const bool arpToggled = ap.on != lastArpOn, modeChanged = ap.assign != lastAssign;
+            lastArpOn = ap.on; lastAssign = ap.assign;
+            if (arpToggled) { synth.allNotesOff(); arp.allOff(); }
+            else if (modeChanged && ap.on != 0) arp.resetVoices();
+        }
         if (chordLearn != lastLearn)
         {
-            if (chordLearn) { learnN = 0; }
-            else if (learnN > 0)
-            {
-                int iv[6], n = 0; const int root = learnNotes[0];
-                for (int k = 1; k < learnN && n < 6; ++k) iv[n++] = learnNotes[k] - root;
-                if (n == 0) { iv[0] = 0; n = 1; }
-                for (int k = 0; k < n; ++k) chordIv[k] = iv[k];
-                chordN = n;
-            }
+            if (chordLearn) { std::fill (std::begin (learnHeld), std::end (learnHeld), false); std::fill (std::begin (learnPeak), std::end (learnPeak), false); learnHeldN = 0; }
             lastLearn = chordLearn;
         }
         synth.setChord (chordIv, chordN); arp.setChord (chordIv, chordN);
@@ -845,16 +857,65 @@ void ZephyrAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
                         if (pedalHeld[nt]) { pedalHeld[nt] = false; keyDown[nt] = false; if (arpOn) arp.noteOff (nt); else evs.push_back ({ pos, 1, nt, 0.f }); }
                 pedal = dn;
             }
-            if (m.isNoteOn())
+            if (m.isNoteOn())                                                                 // detection automatique du MPE (Zephyr v2d) : notes sur plusieurs canaux / canal qui tourne
             {
                 const int nn = m.getNoteNumber(), ch = m.getChannel();
                 for (int nt = 0; nt < 128; ++nt)
                     if ((keyDown[nt] || pedalHeld[nt]) && nt != nn && noteChan[nt] != ch) { lastMultiChan = sampleClock + pos; mpeActive = true; break; }
-                if (lastNoteChan > 0 && ch != lastNoteChan && ch != 1) { lastMultiChan = sampleClock + pos; mpeActive = true; }   // canal qui change a chaque note : controleur MPE
-                lastNoteChan = ch;
-                noteChan[nn] = ch; chPress[ch] = 0.f;
-                keyDown[nn] = true; pedalHeld[nn] = false;
+                if (lastNoteChan > 0 && ch != lastNoteChan && ch != 1) { lastMultiChan = sampleClock + pos; mpeActive = true; }
+                lastNoteChan = ch; noteChan[nn] = ch;
+                mpeNow = mpeOn.load() != 0 || mpeActive;
             }
+            const bool mpeMember = mpeNow && m.getChannel() >= 2;                 // MPE : le canal 1 est le canal maitre, 2..16 portent une note chacun
+            if (mpeMember)
+            {
+                const int ch = m.getChannel() - 1;
+                static const float mpeRange[4] { 2.f, 12.f, 24.f, 48.f };
+                if (m.isPitchWheel())
+                {
+                    const float st = (float) (m.getPitchWheelValue() - 8192) / 8192.f * mpeRange[juce::jlimit (0, 3, mpeBend.load())];
+                    chBend[ch] = st; if (chOn[ch]) evs.push_back ({ pos, 11, chNote[ch], st });
+                    lastMidiMsg.store ((3 << 16) | ((m.getPitchWheelValue() >> 7) << 8) | (m.getPitchWheelValue() & 127));
+                    continue;
+                }
+                if (m.isChannelPressure())
+                {
+                    const float pr = atShape ((float) m.getChannelPressureValue() / 127.f);
+                    if (chOn[ch]) evs.push_back ({ pos, 5, chNote[ch], pr });
+                    lastMidiMsg.store ((4 << 16) | (m.getChannelPressureValue() & 127));
+                    continue;
+                }
+                if (m.isController() && m.getControllerNumber() == 74)                    // slide
+                {
+                    chSlide[ch] = (float) m.getControllerValue() / 127.f;
+                    if (chOn[ch]) evs.push_back ({ pos, 16, chNote[ch], chSlide[ch] });
+                    lastMidiMsg.store ((2 << 16) | (74 << 8) | m.getControllerValue());
+                    continue;
+                }
+                if (m.isNoteOn() && ! chordLearn)
+                {
+                    chNote[ch] = m.getNoteNumber(); chOn[ch] = true;
+                    keyDown[m.getNoteNumber()] = true; pedalHeld[m.getNoteNumber()] = false;
+                    lastMidiMsg.store ((1 << 16) | (m.getNoteNumber() << 8) | m.getVelocity());
+                    if (arpOn) arp.noteOn (m.getNoteNumber(), m.getFloatVelocity());
+                    else
+                    {
+                        evs.push_back ({ pos, 0, m.getNoteNumber(), m.getFloatVelocity() });
+                        evs.push_back ({ pos, 11, m.getNoteNumber(), chBend[ch] });      // l'etat du canal (bend, slide) s'applique des la premiere note
+                        evs.push_back ({ pos, 16, m.getNoteNumber(), chSlide[ch] });
+                    }
+                    continue;
+                }
+                if (m.isNoteOff() && chOn[ch] && chNote[ch] == m.getNoteNumber())
+                {
+                    chOn[ch] = false;
+                    if (pedal) { pedalHeld[m.getNoteNumber()] = true; continue; }
+                    keyDown[m.getNoteNumber()] = false;
+                    if (arpOn) arp.noteOff (m.getNoteNumber()); else evs.push_back ({ pos, 1, m.getNoteNumber(), 0.f });
+                    continue;
+                }
+            }
+            if (m.isNoteOn()) { keyDown[m.getNoteNumber()] = true; pedalHeld[m.getNoteNumber()] = false; }
             else if (m.isNoteOff() && pedal && keyDown[m.getNoteNumber()]) { pedalHeld[m.getNoteNumber()] = true; continue; }
             else if (m.isNoteOff()) keyDown[m.getNoteNumber()] = false;
             if (m.isController()) { lastMidiMsg.store ((2 << 16) | (m.getControllerNumber() << 8) | m.getControllerValue()); if (m.getControllerNumber() == 1) wheelShown.store (m.getControllerValue()); }
@@ -863,48 +924,44 @@ void ZephyrAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
             else if (m.isChannelPressure() || m.isAftertouch()) lastMidiMsg.store ((4 << 16) | (m.getChannelPressureValue() & 127));
             if (m.isNoteOn())
             {
-                if (chordLearn && learnN < 6) learnNotes[learnN++] = m.getNoteNumber();
+                if (chordLearn)                                              // apprentissage : les touches SONNENT (notes simples), l'accord = tout ce qui est tenu ensemble
+                {
+                    if (learnHeldN == 0) std::fill (std::begin (learnPeak), std::end (learnPeak), false);
+                    if (! learnHeld[m.getNoteNumber()]) { learnHeld[m.getNoteNumber()] = true; ++learnHeldN; }
+                    learnPeak[m.getNoteNumber()] = true;
+                    evs.push_back ({ pos, 7, m.getNoteNumber(), m.getFloatVelocity() });
+                    continue;
+                }
                 if (recActive)
                 {
                     const int rp = juce::jlimit (0, zephyr::kArpSteps - 1, arpPat.recPos.load());
                     arpPat.seqNote[rp] = m.getNoteNumber(); arpPat.step[rp] = m.getFloatVelocity() >= 0.85f ? 2 : 1; arpPat.tie[rp] = 0;
                     arpPat.recPos = (rp + 1) % juce::jlimit (1, zephyr::kArpSteps, arpParams.len);
                 }
-                if (chordLearn) continue;                                    // en apprentissage, les touches ne jouent pas
                 if (arpOn) arp.noteOn (m.getNoteNumber(), m.getFloatVelocity()); else evs.push_back ({ pos, 0, m.getNoteNumber(), m.getFloatVelocity() });
             }
-            else if (m.isNoteOff())      { if (chordLearn) continue; if (arpOn) arp.noteOff (m.getNoteNumber()); else evs.push_back ({ pos, 1, m.getNoteNumber(), 0.f }); }
+            else if (m.isNoteOff() && chordLearn && learnHeld[m.getNoteNumber()])
+            {
+                learnHeld[m.getNoteNumber()] = false; --learnHeldN; evs.push_back ({ pos, 9, m.getNoteNumber(), 0.f });
+                if (learnHeldN == 0)                                         // tout est relache : l'accord est celui qui a ete tenu ensemble (au moins 2 notes), la note la plus basse est la fondamentale
+                {
+                    int nn[128], cnt = 0; for (int k = 0; k < 128; ++k) if (learnPeak[k]) nn[cnt++] = k;
+                    if (cnt >= 2)
+                    {
+                        int n = 0; for (int k = 1; k < cnt && n < 6; ++k) chordIv[n++] = nn[k] - nn[0];
+                        chordN = n; chordLearn = false; lastLearn = false;
+                        if (auto* q = apvts.getParameter ("s_chordLearn")) q->setValueNotifyingHost (0.f);
+                    }
+                    std::fill (std::begin (learnPeak), std::end (learnPeak), false);
+                }
+            }
+            else if (m.isNoteOff())      { if (arpOn) arp.noteOff (m.getNoteNumber()); else evs.push_back ({ pos, 1, m.getNoteNumber(), 0.f }); }
             else if (m.isAllNotesOff() || m.isAllSoundOff()) { pedal = false; for (int nt = 0; nt < 128; ++nt) keyDown[nt] = pedalHeld[nt] = false; arp.allOff(); evs.push_back ({ pos, 2, 0, 0.f }); }
-            else if (m.isPitchWheel())
-            {
-                const float b = (float) (m.getPitchWheelValue() - 8192) / 8192.f;
-                if (mpeActive && m.getChannel() != 1)                                                  // MPE : bend de la note de ce canal (etendue MPE standard 48 demi-tons)
-                {
-                    for (int nt = 0; nt < 128; ++nt) if ((keyDown[nt] || pedalHeld[nt]) && noteChan[nt] == m.getChannel()) evs.push_back ({ pos, 15, nt, b * 48.f });
-                }
-                else evs.push_back ({ pos, 3, 0, b * bendRange });
-            }
+            else if (m.isPitchWheel())   evs.push_back ({ pos, 3, 0, (float) (m.getPitchWheelValue() - 8192) / 8192.f * bendRange });
             else if (m.isAftertouch())   evs.push_back ({ pos, 5, m.getNoteNumber(), atShape ((float) m.getAfterTouchValue() / 127.f) });
-            else if (m.isChannelPressure())
-            {
-                const float v = atShape ((float) m.getChannelPressureValue() / 127.f);
-                const int ch = m.getChannel();
-                chPress[ch] = v;
-                if (mpeActive && ! arpOn)                                                                 // MPE : chaque note suit SA pression (avant : une seule pression qui sautait d'une note a l'autre -> tous les filtres tremblaient)
-                {
-                    float mx = 0.f;
-                    for (int nt = 0; nt < 128; ++nt)
-                        if (keyDown[nt] || pedalHeld[nt])
-                        {
-                            if (noteChan[nt] == ch) evs.push_back ({ pos, 5, nt, v });
-                            mx = std::max (mx, chPress[noteChan[nt]]);
-                        }
-                    evs.push_back ({ pos, 6, 0, mx });                                                  // pression globale (source AFTERTOUCH, effets) : la plus forte, stable
-                }
-                else evs.push_back ({ pos, 6, 0, v });
-            }
+            else if (m.isChannelPressure()) evs.push_back ({ pos, 6, 0, atShape ((float) m.getChannelPressureValue() / 127.f) });
             else if (m.isController() && m.getControllerNumber() != 1) {}                // deja traite en debut de bloc
-            else if (m.isController() && m.getControllerNumber() == 1 && ! (mpeActive && m.getChannel() != 1)) { evs.push_back ({ pos, 4, 0, (float) m.getControllerValue() / 127.f }); }
+            else if (m.isController() && m.getControllerNumber() == 1 && ! (mpeNow && m.getChannel() >= 2)) { evs.push_back ({ pos, 4, 0, (float) m.getControllerValue() / 127.f }); }
         }
         {
             zephyr::Arp::Ev ae[256];
@@ -925,7 +982,7 @@ void ZephyrAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         {
             if (upTo > pos) { synth.process (sl + pos, sr + pos, upTo - pos); pos = upTo; }
         };
-        synth.setPerNoteAT (mpeActive && ! arpOn);
+        synth.setPerNoteAT (mpeNow && ! arpOn);
         for (const auto& e : evs)
         {
             const bool cont = e.type == 3 || e.type == 4 || e.type == 5 || e.type == 6 || e.type == 15;     // controles continus (lisses) : pas de decoupe a l'echantillon pres
@@ -943,8 +1000,9 @@ void ZephyrAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
                 case 8: synth.noteOnStack (e.a, e.v); break;
                 case 9: synth.noteOffRaw (e.a); break;
                 case 5: synth.setPolyAT (e.a, e.v); break;
+                case 11: synth.setNoteBend (e.a, e.v); break;
+                case 16: synth.setNoteSlide (e.a, e.v); break;
                 case 6: synth.setChanAT (e.v); break;
-                case 15: synth.setNoteBend (e.a, e.v); break;
                 default: synth.setWheel (e.v); break;
             }
         }
@@ -977,8 +1035,10 @@ juce::AudioProcessorEditor* ZephyrAudioProcessor::createEditor()
 juce::ValueTree ZephyrAudioProcessor::captureState()
 {
     auto state = apvts.copyState();
+    state.setProperty ("lfoV3", 1, nullptr);                               // plage des LFO 0.05..1000 Hz
     state.setProperty ("lfoV2", 1, nullptr);                               // plage de vitesse des LFO elargie (0.05..300 Hz)
     state.setProperty ("zv2", 1, nullptr); state.setProperty ("zv2c", 1, nullptr);                                 // Zephyr v2 : filtres circuit (0 MS-10, 1 CEM3320, 2 SEM, 3 Prophet), nouvelles destinations
+    state.setProperty ("dirV3", 1, nullptr);                               // matrice : quantite 0..1 + sens par routage (v3)
     state.setProperty ("patch", juce::String (engine.serializePatch()), nullptr);
     state.setProperty ("rack", juce::String (engine.serializeRack()), nullptr);
     state.setProperty ("bypass", (int) engine.bypassMask.load(), nullptr);
@@ -1064,6 +1124,33 @@ void ZephyrAudioProcessor::applyState (juce::ValueTree state)
                 if (id.startsWith ("s_l") && id.endsWith ("Rate") && id.length() == 8)
                     c.setProperty ("value", (float) c.getProperty ("value", 0.4) * 0.7677f, nullptr);
             }
+    if (! state.hasProperty ("lfoV3"))                                     // plage 0.05..300 Hz -> 0.05..1000 Hz : meme vitesse
+        for (auto c : state)
+            if (c.hasProperty ("id"))
+            {
+                const auto id = c.getProperty ("id").toString();
+                if (id.startsWith ("s_l") && id.endsWith ("Rate") && id.length() == 8)
+                    c.setProperty ("value", (float) c.getProperty ("value", 0.4) * 0.8784f, nullptr);
+            }
+#if ZEPHYR_SYNTH
+    if (! state.hasProperty ("dirV3"))                                     // ancien projet / preset : quantite signee -> (quantite, sens) pour que le son reste identique
+    {
+        for (int sl = 1; sl <= zephyr::kSlots; ++sl)
+        {
+            const juce::String b ("s_slot" + juce::String (sl));
+            juce::ValueTree amtN, srcN;
+            for (auto c : state)
+                if (c.hasProperty ("id")) { const auto id = c.getProperty ("id").toString(); if (id == b + "Amt") amtN = c; else if (id == b + "Src") srcN = c; }
+            if (! amtN.isValid()) continue;
+            const float amt = (float) amtN.getProperty ("value", 0.0);
+            const int src = srcN.isValid() ? juce::roundToInt ((float) srcN.getProperty ("value", 0.0)) : 0;
+            const int dir = zephyr::srcBipolar (src) ? 2 : (amt < 0.f ? 1 : 0);
+            amtN.setProperty ("value", std::fabs (amt), nullptr);
+            juce::ValueTree d ("PARAM"); d.setProperty ("id", b + "Dir", nullptr); d.setProperty ("value", dir, nullptr);
+            state.appendChild (d, nullptr);
+        }
+    }
+#endif
     apvts.replaceState (state);
 }
 
@@ -1133,7 +1220,7 @@ int ZephyrAudioProcessor::knobMods (int dst, KnobMod out[2]) const
     {
         const juce::String q ("s_slot" + juce::String (i));
         const int d = juce::roundToInt (apvts.getRawParameterValue (q + "Dst")->load()), s = juce::roundToInt (apvts.getRawParameterValue (q + "Src")->load());
-        if (d == dst && s > 0) out[n++] = { i, s, apvts.getRawParameterValue (q + "Amt")->load() };
+        if (d == dst && s > 0) out[n++] = { i, s, apvts.getRawParameterValue (q + "Amt")->load(), juce::roundToInt (apvts.getRawParameterValue (q + "Dir")->load()) };
     }
     return n;
 }
@@ -1153,18 +1240,20 @@ int ZephyrAudioProcessor::assignKnobMod (int dst, int src)
         if (juce::roundToInt (apvts.getRawParameterValue (q + "Src")->load()) == 0 && juce::roundToInt (apvts.getRawParameterValue (q + "Dst")->load()) == 0)
         {
             setParamReal ((q + "Src").toRawUTF8(), (float) src); setParamReal ((q + "Dst").toRawUTF8(), (float) dst); setParamReal ((q + "Amt").toRawUTF8(), 0.5f);
+            setParamReal ((q + "Dir").toRawUTF8(), zephyr::srcBipolar (src) ? 2.f : 0.f);                      // LFO / key / random : les deux sens ; le reste : vers l'avant
             return i;
         }
     }
     return -1;
 }
 
-void ZephyrAudioProcessor::setKnobModAmt (int slot, float amt) { setParamReal (("s_slot" + juce::String (slot) + "Amt").toRawUTF8(), juce::jlimit (-1.f, 1.f, amt)); }
+void ZephyrAudioProcessor::setKnobModAmt (int slot, float amt) { setParamReal (("s_slot" + juce::String (slot) + "Amt").toRawUTF8(), juce::jlimit (0.f, 1.f, amt)); }
+void ZephyrAudioProcessor::setKnobModDir (int slot, int dir) { setParamReal (("s_slot" + juce::String (slot) + "Dir").toRawUTF8(), (float) juce::jlimit (0, 2, dir)); }
 
 void ZephyrAudioProcessor::clearKnobMod (int slot)
 {
     const juce::String q ("s_slot" + juce::String (slot));
-    setParamReal ((q + "Src").toRawUTF8(), 0.f); setParamReal ((q + "Dst").toRawUTF8(), 0.f); setParamReal ((q + "Amt").toRawUTF8(), 0.f);
+    setParamReal ((q + "Src").toRawUTF8(), 0.f); setParamReal ((q + "Dst").toRawUTF8(), 0.f); setParamReal ((q + "Amt").toRawUTF8(), 0.f); setParamReal ((q + "Dir").toRawUTF8(), 0.f);
 }
 
 float ZephyrAudioProcessor::modSourceLive (int src) const
@@ -1296,7 +1385,11 @@ void ZephyrAudioProcessor::loadFactoryPreset (int i)
 bool ZephyrAudioProcessor::handleCC (int cc, int value)
 {
     if (cc < 0 || cc > 127) return false;
-    const float v = (float) value / 127.f;
+    // plage reellement envoyee par l'Hydrasynth pour certains potards (ex. GATE de l'ARP : 5 a 100 au lieu de 0 a 127) : recalee sur 0..1
+    static const struct { int cc, lo, hi; } kHwRange[] { { 107, 5, 100 } };
+    int lo = 0, hi = 127;
+    for (auto& r : kHwRange) if (r.cc == cc) { lo = r.lo; hi = r.hi; }
+    const float v = juce::jlimit (0.f, 1.f, (float) (value - lo) / (float) (hi - lo));
     const int ln = learnIdx.load();
     if (ln >= 0 && ln < mapIds.size() && cc != 0 && cc != 32 && cc != 64 && cc < 120)
     { mapCc[(size_t) ln].store (cc); learnIdx.store (-1); mapDirty.store (true); }
@@ -1333,7 +1426,10 @@ void ZephyrAudioProcessor::applyMapped (int i, float v, float prevHw)
         }
         else
         {
-            if (external || ! anchored[i]) { anchored[i] = true; aCur[i] = cur; aHw[i] = prevHw >= 0.f ? prevHw : v; }
+            const int dir = v > prevHw + 0.002f ? 1 : (v < prevHw - 0.002f ? -1 : 0);                // sens du potard
+            if (external || ! anchored[i]) { anchored[i] = true; aCur[i] = cur; aHw[i] = prevHw >= 0.f ? prevHw : v; lastDir[i] = 0; }
+            else if (dir != 0 && lastDir[i] != 0 && dir != lastDir[i] && prevHw >= 0.f) { aCur[i] = cur; aHw[i] = prevHw; }   // demi-tour : on repart d'ici, donc chaque butee reste atteignable
+            if (dir != 0) lastDir[i] = (signed char) dir;
             if (v >= aHw[i]) out = aCur[i] + (v - aHw[i]) * (1.f - aCur[i]) / std::max (1.f - aHw[i], 1e-4f);
             else             out = aCur[i] - (aHw[i] - v) * aCur[i] / std::max (aHw[i], 1e-4f);
             out = juce::jlimit (0.f, 1.f, out);

@@ -560,6 +560,10 @@ bool drawGlyph (juce::Graphics& g, const juce::String& name, juce::Rectangle<flo
 
 juce::File themeFile() { return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Foudre Audio").getChildFile ("zephyr-theme.txt"); }
 int loadThemePref() { const auto f = themeFile(); return f.existsAsFile() ? f.loadFileAsString().trim().getIntValue() : 0; }
+juce::File drawerFile() { return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Foudre Audio").getChildFile ("drawers.txt"); }
+int loadDrawerPref() { const auto f = drawerFile(); return f.existsAsFile() ? f.loadFileAsString().trim().getIntValue() : 3; }     // bit 0 : patchbay ouvert, bit 1 : bandeau ouvert
+void saveDrawerPref (int v) { const auto f = drawerFile(); f.getParentDirectory().createDirectory(); f.replaceWithText (juce::String (v)); }
+juce::File scopeFile() { return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Foudre Audio").getChildFile ("zephyr-scope.txt"); }
 void saveThemePref (int i) { const auto f = themeFile(); f.getParentDirectory().createDirectory(); f.replaceWithText (juce::String (i)); }
 
 const int kTileNodes[] = { zephyr::NSat, zephyr::NColor, zephyr::NFilter, zephyr::NComp, zephyr::NPhaser, zephyr::NEnsemble, zephyr::NStut, zephyr::NDelay, zephyr::NVerb, zephyr::NWide };   // meme ordre que le rack et le spectre
@@ -682,7 +686,7 @@ void ZephyrLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w
                                          float startAngle, float endAngle, juce::Slider& s)
 {
     const auto c = juce::Rectangle<float> ((float) x, (float) y, (float) w, (float) h).getCentre();
-    const bool numbered = (bool) s.getProperties()["numbered"];
+    const bool numbered = false;
     const float r = (float) juce::jmin (w, h) * 0.5f, kr = r * (numbered ? 0.58f : 0.66f);
     const float angle = startAngle + pos * (endAngle - startAngle);
     if (s.isEnabled())                                                                     // arc lumineux de la valeur (depuis le cran)
@@ -739,7 +743,7 @@ void KnobUnit::timerCallback()
     {
         ZephyrAudioProcessor::KnobMod km[2]; const int n = proc->knobMods (modDst, km);
         int hs = n * 977 + (int) (slider.getValue() * 1000.0);
-        for (int k = 0; k < n; ++k) hs += km[k].src * 131 * (k + 1) + (int) (km[k].amt * 1000.f) + (int) (proc->modSourceLive (km[k].src) * 1000.f);
+        for (int k = 0; k < n; ++k) hs += km[k].src * 131 * (k + 1) + km[k].dir * 7919 + (int) (km[k].amt * 1000.f) + (int) (proc->modSourceLive (km[k].src) * 1000.f);
         if (hs != hash || n != nMods) { hash = hs; nMods = n; repaint(); }
         const int wantMs = n > 0 ? 40 : 160;
         if (getTimerInterval() != wantMs) startTimer (wantMs);
@@ -772,6 +776,13 @@ void KnobUnit::mouseDown (const juce::MouseEvent& e)
         fam ("Assigner \xc3\xa0  >  ENVELOPPES", { MsEnv, MsAmpEnv });
         fam ("Assigner \xc3\xa0  >  JEU", { MsVel, MsWheel, MsChanAT, MsPolyAT, MsKey, MsRandom });
         fam ("Assigner \xc3\xa0  >  PISTES ARP", { MsArp1, MsArp2, MsArp3, MsArp4, MsArp5, MsArp6, MsArp7, MsArp8 });
+        static const char* const dirName[3] { "Avant  (l'anneau part du potard vers le haut)", "Arri\xc3\xa8re  (l'anneau part du potard vers le bas)", "Les deux  (l'anneau s'\xc3\xa9largit des deux c\xc3\xb4t\xc3\xa9s)" };
+        for (int k = 0; k < n; ++k)                                            // sens de chaque anneau : avant / arriere / les deux
+        {
+            juce::PopupMenu sd;
+            for (int d = 0; d < 3; ++d) sd.addItem (300 + km[k].slot * 3 + d, juce::String::fromUTF8 (dirName[d]), true, km[k].dir == d);
+            m.addSubMenu (juce::String::fromUTF8 ("Sens de l'anneau  >  ") + kModSrcNames[km[k].src], sd);
+        }
         for (int k = 0; k < n; ++k)
             m.addItem (200 + km[k].slot, juce::String::fromUTF8 ("Supprimer : ") + kModSrcNames[km[k].src] + "  (" + juce::String (juce::roundToInt (km[k].amt * 100.f)) + " %)");
         if (n >= 2) m.addItem (999, juce::String::fromUTF8 ("2 sources d\xc3\xa9j\xc3\xa0 : supprime-en une pour en changer"), false);
@@ -793,6 +804,7 @@ void KnobUnit::mouseDown (const juce::MouseEvent& e)
     {
         if (r >= 100 && r < 200) pr->assignKnobMod (dst, r - 100);
         else if (r >= 200 && r < 300) pr->clearKnobMod (r - 200);
+        else if (r >= 300 && r < 400) pr->setKnobModDir ((r - 300) / 3, (r - 300) % 3);
         else if (r == 1) { if (learning) pr->cancelMidiLearn(); else pr->startMidiLearn (id); }
         else if (r == 2) pr->clearMidiAssign (id);
         else if (r == 3) pr->defaultMidiAssign (id);
@@ -837,7 +849,7 @@ bool KnobUnit::modInterceptor (const juce::MouseEvent& e, int phase)
     if (ringSlot < 0) return true;
     if (phase == 1)
     {
-        const float amt = juce::jlimit (-1.f, 1.f, ringStartAmt + (dragStartY - e.position.y) / 150.f);
+        const float amt = juce::jlimit (0.f, 1.f, ringStartAmt + (dragStartY - e.position.y) / 150.f);       // la quantite grandit vers le haut ; le sens (avant / arriere / les deux) est celui du routage
         proc->setKnobModAmt (ringSlot, amt);
         dragText = dragText.upToFirstOccurrenceOf ("  ", false, false) + "  " + juce::String (juce::roundToInt (amt * 100.f)) + " %";
         repaint();
@@ -856,21 +868,21 @@ void KnobUnit::paintOverChildren (juce::Graphics& g)
     const float r = juce::jmin (sb.getWidth(), sb.getHeight()) * 0.5f;
     const float sa = juce::MathConstants<float>::pi * 1.2f, ea = juce::MathConstants<float>::pi * 2.8f;
     const float base = (float) slider.valueToProportionOfLength (slider.getValue());
-    const bool numbered = (bool) slider.getProperties()["numbered"] && sb.getWidth() >= 58.f;
+    const bool numbered = false;                                                 // chiffres 0..10 supprimes
     const float sw = juce::jlimit (1.5f, 2.2f, r * 0.047f);
     for (int k = 0; k < n; ++k)
     {
         const float rad = r * (numbered ? (k == 0 ? 0.705f : 0.64f) : (k == 0 ? 0.82f : 0.74f));       // entre le corps du potard et les graduations : jamais sur les chiffres ni sur les bords
-        const float sc = ZephyrAudioProcessor::modScaleOfDst (modDst), span = km[k].amt * sc;
-        const float end = juce::jlimit (0.f, 1.f, base + span);
-        const float a0 = sa + juce::jmin (base, end) * (ea - sa), a1 = sa + juce::jmax (base, end) * (ea - sa);
+        const float sc = ZephyrAudioProcessor::modScaleOfDst (modDst), span = std::fabs (km[k].amt) * sc;
+        const float lo = juce::jlimit (0.f, 1.f, km[k].dir == 0 ? base : base - span), hi = juce::jlimit (0.f, 1.f, km[k].dir == 1 ? base : base + span);   // avant : [potard, +] ; arriere : [-, potard] ; les deux : [-, +]
+        const float a0 = sa + lo * (ea - sa), a1 = sa + hi * (ea - sa);
         juce::Path p; p.addCentredArc (c.x, c.y, rad, rad, 0.f, a0, juce::jmax (a1, a0 + 0.02f), true);
         g.setColour (juce::Colours::black.withAlpha (0.55f)); g.strokePath (p, juce::PathStrokeType (sw + 1.f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         g.setColour (kRingCol[k]); g.strokePath (p, juce::PathStrokeType (sw, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         const float live = proc->modSourceLive (km[k].src);                        // point vivant : ou le reglage est reellement en ce moment
         if (live > -50.f)
         {
-            const float pos = juce::jlimit (0.f, 1.f, base + span * live), a = sa + pos * (ea - sa);
+            const float pos = juce::jlimit (0.f, 1.f, base + sc * zephyr::slotMod (km[k].src, live, km[k].amt, km[k].dir)), a = sa + pos * (ea - sa);
             g.setColour (juce::Colours::white); g.fillEllipse (c.x + rad * std::sin (a) - 2.6f, c.y - rad * std::cos (a) - 2.6f, 5.2f, 5.2f);
             g.setColour (kRingCol[k]);           g.drawEllipse (c.x + rad * std::sin (a) - 2.6f, c.y - rad * std::cos (a) - 2.6f, 5.2f, 5.2f, 1.3f);
         }
@@ -893,7 +905,12 @@ void KnobUnit::setChoices (const juce::StringArray& names)
     resized();
     slider.getProperties().set ("numbered", false);
     slider.textFromValueFunction = [this] (double v) { return choices[juce::jlimit (0, juce::jmax (0, choices.size() - 1), juce::roundToInt (v))]; };
-    slider.onValueChange = [this] { repaint(); };
+    if (names.size() > 8)                                                          // beaucoup de crans : points seulement, la valeur active s'ecrit dans l'etiquette
+    {
+        baseText = text;
+        slider.onValueChange = [this] { repaint(); };
+    }
+    else slider.onValueChange = [this] { repaint(); };
     slider.setPopupDisplayEnabled (true, true, nullptr);
     repaint();
 }
@@ -905,7 +922,8 @@ void KnobUnit::paint (juce::Graphics& g)
     const float r = juce::jmin (sb.getWidth(), sb.getHeight()) * 0.5f;
     const float sa = juce::MathConstants<float>::pi * 1.2f, ea = juce::MathConstants<float>::pi * 2.8f;
     const float alpha = slider.isEnabled() ? 1.f : 0.45f;
-    const bool numbered = (bool) slider.getProperties()["numbered"] && sb.getWidth() >= 58.f;
+    const bool numbered = false;
+    if (choices.size() > 8) text = baseText + "  " + choices[juce::jlimit (0, choices.size() - 1, juce::roundToInt (slider.getValue()))];
     if (! choices.isEmpty())                                                       // potard cranté : graduations nommées, la valeur active en clair
     {
         const int n = choices.size(), cur = juce::jlimit (0, n - 1, juce::roundToInt (slider.getValue()));
@@ -915,20 +933,19 @@ void KnobUnit::paint (juce::Graphics& g)
             const float a = sa + (n > 1 ? (float) i / (float) (n - 1) : 0.5f) * (ea - sa);
             g.setColour ((i == cur ? look::cvRing : look::print).withAlpha ((i == cur ? 1.f : 0.85f) * alpha));
             g.fillEllipse (c.x + r * 0.74f * std::sin (a) - 1.8f, c.y - r * 0.74f * std::cos (a) - 1.8f, 3.6f, 3.6f);
-            g.drawText (choices[i], (int) (c.x + r * (0.98f + 0.04f * std::abs (std::sin (a))) * std::sin (a)) - 24, (int) (c.y - r * 1.0f * std::cos (a)) - 6, 48, 12, juce::Justification::centred, false);
+            if (n <= 8) g.drawText (choices[i], (int) (c.x + r * (0.98f + 0.04f * std::abs (std::sin (a))) * std::sin (a)) - 24, (int) (c.y - r * 1.0f * std::cos (a)) - 6, 48, 12, juce::Justification::centred, false);
         }
     }
-    else
-    for (int i = 0; i <= 10; ++i)
+    else                                                                           // anneau lumineux fin (plus de chiffres 0..10) : plage, butees et repere du milieu
     {
-        const float a = sa + (float) i / 10.f * (ea - sa), rad = r * (numbered ? 0.755f : 0.93f), dot = (i % 5 == 0) ? 3.2f : 2.f;
-        g.setColour (look::print.withAlpha (0.88f * alpha));
-        g.fillEllipse (c.x + rad * std::sin (a) - dot * 0.5f, c.y - rad * std::cos (a) - dot * 0.5f, dot, dot);
-        if (numbered)                                                              // chiffres 0..10 autour du bouton, comme le MS20
+        juce::Path arc; arc.addCentredArc (c.x, c.y, r * 0.93f, r * 0.93f, 0.f, sa, ea, true);
+        g.setColour (juce::Colours::black.withAlpha (0.35f * alpha)); g.strokePath (arc, juce::PathStrokeType (2.6f));
+        g.setColour (look::print.withAlpha (0.42f * alpha));          g.strokePath (arc, juce::PathStrokeType (1.1f));
+        for (int i = 0; i <= 2; ++i)
         {
-            g.setFont (font (8.6f));                                               // chiffres un peu plus pres du potard : ils ne touchent plus ceux du potard voisin
-            g.drawText (juce::String (i), (int) (c.x + r * 0.88f * std::sin (a)) - 7, (int) (c.y - r * 0.88f * std::cos (a)) - 5, 14, 10,
-                        juce::Justification::centred, false);
+            const float a = sa + (float) i * 0.5f * (ea - sa), rad = r * 0.93f, dot = i == 1 ? 2.4f : 3.4f;
+            g.setColour (look::print.withAlpha (0.9f * alpha));
+            g.fillEllipse (c.x + rad * std::sin (a) - dot * 0.5f, c.y - rad * std::cos (a) - dot * 0.5f, dot, dot);
         }
     }
     if (! numbered && choices.isEmpty() && ! (loText == "0" && hiText == "10"))
@@ -1423,6 +1440,94 @@ void ModuleUnit::addJack (Jack* j, int col, int row, const juce::String& label)
     jackCols = juce::jmax (jackCols, col + 1);
 }
 
+// ---------------------------------------------------------------- circuit anime : grille transparente + composants qui s'allument avec le signal
+juce::Rectangle<float> ModuleUnit::animRect() const
+{
+    const auto b = getLocalBounds().toFloat().reduced (1.f);
+    const float cw = juce::jmin (280.f, b.getWidth() * 0.26f), top = 22.f + 8.f;
+    return { b.getRight() - (float) jackStripWidth() - cw - 12.f, b.getY() + top, cw, juce::jmax (10.f, b.getHeight() - top - 10.f) };
+}
+
+void ModuleUnit::tickAnim()
+{
+    float target = 0.f;
+    if (level && (! isActive || isActive())) target = juce::jlimit (0.f, 1.f, std::sqrt (juce::jmax (0.f, level())) * 1.25f);
+    glow += (target - glow) * (target > glow ? 0.5f : 0.1f);
+    animT += (1.f / 30.f) * (0.35f + 2.4f * glow);
+    if (! collapsed && isShowing() && (glow > 0.004f || lastGlow > 0.004f)) repaint (animRect().expanded (3.f).toNearestInt());
+    lastGlow = glow;
+}
+
+void ModuleUnit::drawCircuit (juce::Graphics& g, juce::Rectangle<float> r, int seed, float glowV, float t, juce::Colour accent) const
+{
+    juce::Graphics::ScopedSaveState ss (g);
+    g.reduceClipRegion (r.toNearestInt());
+    const float cell = 16.f;
+    const int cols = juce::jmax (3, (int) (r.getWidth() / cell)), rows = juce::jmax (3, (int) (r.getHeight() / cell));
+    const float ox = r.getX() + (r.getWidth() - (float) cols * cell) * 0.5f, oy = r.getY() + (r.getHeight() - (float) rows * cell) * 0.5f;
+    auto P = [&] (int cx, int cy) { return juce::Point<float> (ox + ((float) cx + 0.5f) * cell, oy + ((float) cy + 0.5f) * cell); };
+    // grille transparente
+    g.setColour (juce::Colours::white.withAlpha (0.06f));
+    for (int i = 0; i <= cols; ++i) g.drawVerticalLine ((int) (ox + (float) i * cell), oy, oy + (float) rows * cell);
+    for (int j = 0; j <= rows; ++j) g.drawHorizontalLine ((int) (oy + (float) j * cell), ox, ox + (float) cols * cell);
+    // composants poses sur la grille, relies par des pistes en L ; chaque element a un seuil d'allumage
+    juce::Random rnd (1234 + seed * 77);
+    const int nComp = juce::jlimit (5, 11, (cols * rows) / 14);
+    struct Comp { int cx, cy, kind; float th; };
+    std::vector<Comp> comps;
+    for (int k = 0; k < nComp; ++k)
+    {
+        Comp c { 1 + rnd.nextInt (juce::jmax (1, cols - 2)), 1 + rnd.nextInt (juce::jmax (1, rows - 2)), rnd.nextInt (6), (float) (k + 1) / (float) (nComp + 1) };
+        comps.push_back (c);
+    }
+    std::sort (comps.begin(), comps.end(), [] (const Comp& a, const Comp& b) { return a.cx != b.cx ? a.cx < b.cx : a.cy < b.cy; });
+    for (size_t k = 0; k < comps.size(); ++k) comps[k].th = (float) (k + 1) / (float) (comps.size() + 1);       // allumage de gauche a droite : le signal "traverse" le circuit
+    auto lit = [&] (float th) { return juce::jlimit (0.f, 1.f, (glowV - th * 0.85f) / 0.18f); };
+    const juce::Colour dim = juce::Colours::white.withAlpha (0.20f);
+    for (size_t k = 0; k + 1 < comps.size(); ++k)                                      // pistes
+    {
+        const auto a = P (comps[k].cx, comps[k].cy), bb = P (comps[k + 1].cx, comps[k + 1].cy); const juce::Point<float> m (bb.x, a.y);
+        juce::Path tr; tr.startNewSubPath (a); tr.lineTo (m); tr.lineTo (bb);
+        const float L = lit (comps[k + 1].th);
+        g.setColour (dim.withAlpha (0.16f)); g.strokePath (tr, juce::PathStrokeType (1.1f));
+        if (L > 0.01f)
+        {
+            g.setColour (accent.withAlpha (0.20f * L)); g.strokePath (tr, juce::PathStrokeType (4.f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            g.setColour (accent.brighter (0.3f).withAlpha (0.75f * L)); g.strokePath (tr, juce::PathStrokeType (1.3f));
+            const float d1 = a.getDistanceFrom (m), d2 = m.getDistanceFrom (bb), tot = d1 + d2;                   // impulsion qui court sur la piste
+            float u = std::fmod (t * 0.55f + 0.31f * (float) k, 1.f) * tot;
+            const auto pp = u < d1 ? juce::Point<float> (a.x + (m.x - a.x) * (d1 > 0 ? u / d1 : 0.f), a.y) : juce::Point<float> (bb.x, m.y + (bb.y - m.y) * (d2 > 0 ? (u - d1) / d2 : 0.f));
+            g.setColour (accent.brighter (0.8f).withAlpha (0.9f * L)); g.fillEllipse (pp.x - 1.8f, pp.y - 1.8f, 3.6f, 3.6f);
+        }
+    }
+    for (const auto& c : comps)                                                         // composants
+    {
+        const float L = lit (c.th);
+        const auto p = P (c.cx, c.cy);
+        const auto col = dim.interpolatedWith (accent.brighter (0.2f), L).withAlpha (0.28f + 0.67f * L);
+        if (L > 0.01f) { g.setColour (accent.withAlpha (0.16f * L)); g.fillEllipse (p.x - 11.f, p.y - 11.f, 22.f, 22.f); }
+        g.setColour (juce::Colours::black.withAlpha (0.35f)); g.fillEllipse (p.x - 1.f, p.y - 1.f, 2.f, 2.f);
+        g.setColour (col);
+        juce::Path q;
+        switch (c.kind)
+        {
+            case 0: { const float x0 = p.x - 7.f; q.startNewSubPath (x0 - 3.f, p.y); q.lineTo (x0, p.y);                  // resistance
+                      for (int z = 0; z < 6; ++z) q.lineTo (x0 + 2.4f * (float) (z + 1), p.y + ((z & 1) ? 3.f : -3.f));
+                      q.lineTo (x0 + 17.f, p.y); break; }
+            case 1: q.addLineSegment ({ p.x - 9.f, p.y, p.x - 2.f, p.y }, 0.f); q.addLineSegment ({ p.x - 2.f, p.y - 6.f, p.x - 2.f, p.y + 6.f }, 0.f);   // condensateur
+                    q.addLineSegment ({ p.x + 2.f, p.y - 6.f, p.x + 2.f, p.y + 6.f }, 0.f); q.addLineSegment ({ p.x + 2.f, p.y, p.x + 9.f, p.y }, 0.f); break;
+            case 2: q.addTriangle (p.x - 5.f, p.y - 5.f, p.x - 5.f, p.y + 5.f, p.x + 5.f, p.y); q.addLineSegment ({ p.x + 5.f, p.y - 5.f, p.x + 5.f, p.y + 5.f }, 0.f); break;   // diode
+            case 3: { q.addRectangle (p.x - 8.f, p.y - 6.f, 16.f, 12.f);                                                  // circuit integre
+                      for (int z = 0; z < 3; ++z) { q.addLineSegment ({ p.x - 8.f + 4.f * (float) z + 2.f, p.y - 9.f, p.x - 8.f + 4.f * (float) z + 2.f, p.y - 6.f }, 0.f);
+                                                    q.addLineSegment ({ p.x - 8.f + 4.f * (float) z + 2.f, p.y + 6.f, p.x - 8.f + 4.f * (float) z + 2.f, p.y + 9.f }, 0.f); } break; }
+            case 4: for (int z = 0; z < 3; ++z) q.addCentredArc (p.x - 6.f + 6.f * (float) z, p.y, 3.f, 3.f, 0.f, -1.5708f, 1.5708f, z == 0);   // bobine
+                    break;
+            default: q.addEllipse (p.x - 5.f, p.y - 5.f, 10.f, 10.f); q.addEllipse (p.x - 1.5f, p.y - 1.5f, 3.f, 3.f); break;           // lampe / voyant
+        }
+        g.strokePath (q, juce::PathStrokeType (1.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+}
+
 void ModuleUnit::paint (juce::Graphics& g)
 {
     const auto b = getLocalBounds().toFloat();
@@ -1593,6 +1698,16 @@ void RackView::layoutUnits (const std::vector<ModuleUnit*>& list, ModuleUnit* dr
     if (getHeight() != total) setSize (w, total);
 }
 
+void ZephyrEditor::layoutTiles()
+{
+    tilePos.assign (tiles.size(), 0);
+    int pos = 0;
+    for (int n : proc.engine.getRack())                                                    // d'abord les modules du rack, dans l'ordre du rack
+        for (size_t i = 0; i < tiles.size(); ++i) if (kTileNodes[i] == n) tilePos[i] = pos++;
+    for (size_t i = 0; i < tiles.size(); ++i) if (! proc.engine.inRack (kTileNodes[i])) tilePos[i] = pos++;   // puis les autres, dans l'ordre d'origine
+    for (size_t i = 0; i < tiles.size(); ++i) tiles[i]->setBounds (12, 34 + tilePos[i] * 25, 126, 22);
+}
+
 void RackView::dragStart (ModuleUnit* u, int grab) { temp = order; dragU = u; dragGrab = grab; startTimerHz (60); }
 
 void RackView::dragMove (ModuleUnit* u, int pointerY, int grab)
@@ -1753,6 +1868,10 @@ struct SettingsPanel : public juce::Component
               { "Linear", "Exponential  (soft start)", "Logarithmic  (sensitive start)", "S-curve" }, &p.atCurve },
             { "AFTERTOUCH RESPONSE", "How fast the pressure follows your finger.",
               { "Instant", "Fast", "Medium  (default)", "Slow", "Slower", "Very slow" }, &p.atSpeed },
+            { "MPE MODE", "On : each note has its own pressure, slide (CC74) and pitch bend (channel 1 = master). Hydrasynth : MPE mode.",
+              { "Off  (standard MIDI)", "On  (MPE, channels 2-16)" }, &p.mpeOn },
+            { "MPE BEND RANGE", "Must match the keyboard (MPE default: 48 semitones).",
+              { "+/- 2 semitones", "+/- 12 semitones", "+/- 24 semitones", "+/- 48 semitones  (MPE default)" }, &p.mpeBend },
             { "MIDI TAKEOVER", "When a hardware knob does not match the plugin knob.",
               { "Scale  (converges smoothly)", "Pickup  (waits to cross)", "Direct  (jumps)" }, &p.takeoverMode } };
         for (const auto& r : rows)
@@ -1768,7 +1887,16 @@ struct SettingsPanel : public juce::Component
             addAndMakeVisible (*lb); addAndMakeVisible (*hn); addAndMakeVisible (*cb);
             labels.push_back (std::move (lb)); hints.push_back (std::move (hn)); combos.push_back (std::move (cb));
         }
-        setSize (420, 24 + (int) combos.size() * 58);
+        // assignations MIDI : par defaut la table du Hydrasynth ; on peut tout vider (autre controleur) puis apprendre ses propres CC (clic droit sur un potard)
+        midiTitle.setText ("MIDI ASSIGNMENTS", juce::dontSendNotification);
+        midiTitle.setFont (juce::Font (juce::FontOptions (11.f, juce::Font::bold))); midiTitle.setColour (juce::Label::textColourId, juce::Colour (0xffe8d9a8));
+        midiHint.setText ("Default: Hydrasynth map. Clear all to use another controller, then right-click a knob > Assign MIDI.", juce::dontSendNotification);
+        midiHint.setFont (juce::Font (juce::FontOptions (9.5f))); midiHint.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.55f));
+        clearBtn.setButtonText ("CLEAR ALL ASSIGNMENTS"); hydraBtn.setButtonText ("RESTORE HYDRASYNTH MAP");
+        clearBtn.onClick = [this] { proc.clearAllMidiAssign(); };
+        hydraBtn.onClick = [this] { proc.resetMidiMap(); };
+        addAndMakeVisible (midiTitle); addAndMakeVisible (midiHint); addAndMakeVisible (clearBtn); addAndMakeVisible (hydraBtn);
+        setSize (420, 24 + (int) combos.size() * 58 + 78);
     }
     void paint (juce::Graphics& g) override { g.fillAll (juce::Colour (look::T().screenBg)); }
     void resized() override
@@ -1779,10 +1907,13 @@ struct SettingsPanel : public juce::Component
             labels[k]->setBounds (12, y, 150, 16); combos[k]->setBounds (170, y - 2, getWidth() - 182, 24);
             hints[k]->setBounds (12, y + 22, getWidth() - 24, 14); y += 58;
         }
+        midiTitle.setBounds (12, y, 200, 16); midiHint.setBounds (12, y + 18, getWidth() - 24, 14);
+        clearBtn.setBounds (12, y + 40, (getWidth() - 32) / 2, 24); hydraBtn.setBounds (20 + (getWidth() - 32) / 2, y + 40, (getWidth() - 32) / 2, 24);
     }
     ZephyrAudioProcessor& proc;
     std::vector<std::unique_ptr<juce::Label>> labels, hints;
     std::vector<std::unique_ptr<juce::ComboBox>> combos;
+    juce::Label midiTitle, midiHint; juce::TextButton clearBtn, hydraBtn;
 };
 }
 #endif
@@ -1794,6 +1925,10 @@ ZephyrEditor::ZephyrEditor (ZephyrAudioProcessor& p, juce::String title, juce::S
     look::applyTheme (loadThemePref());
     ZephyrLookAndFeel::refreshAll();
 
+    {
+        const auto f = scopeFile();
+        if (f.existsAsFile()) { juce::StringArray t; t.addTokens (f.loadFileAsString().trim(), ",", ""); if (t.size() >= 3) { scopeAuto = t[0].getIntValue() != 0; scopeTrimDb = t[1].getFloatValue(); scopeManualDb = t[2].getFloatValue(); } }
+    }
     addAndMakeVisible (themeBtn);
     themeBtn.onClick = [this] { cycleTheme(); };
     addAndMakeVisible (prevBtn); addAndMakeVisible (nameBtn); addAndMakeVisible (nextBtn); addAndMakeVisible (saveBtn);
@@ -1832,6 +1967,14 @@ ZephyrEditor::ZephyrEditor (ZephyrAudioProcessor& p, juce::String title, juce::S
         const auto f = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Foudre Audio").getChildFile ("midishow.txt");
         f.getParentDirectory().createDirectory(); f.replaceWithText (look::showMidi ? "1" : "0");
     };
+    {
+        patchOpen = false; stripOpen = true; juce::ignoreUnused (loadDrawerPref);     // Zephyr : pas de patchbay (v2c), pas de languettes
+        addChildComponent (patchToggle); addChildComponent (stripToggle);
+        patchToggle.onClick = [this] { patchOpen = ! patchOpen; updateDrawers(); };
+        stripToggle.onClick = [this] { stripOpen = ! stripOpen; updateDrawers(); };
+        patchToggle.setTooltip ("Replier / deplier le patchbay");
+        stripToggle.setTooltip ("Replier / deplier les LFO, S&H et suiveur d'enveloppe");
+    }
     addAndMakeVisible (settingsBtn);
     settingsBtn.setButtonText ("SETTINGS");
     settingsBtn.onClick = [this]
@@ -2137,6 +2280,7 @@ void ZephyrEditor::buildUnits()
 void ZephyrEditor::rackChangedByUser (const std::vector<int>& newOrder)
 {
     proc.engine.setRack (newOrder);
+    layoutTiles();
     patchBay.repaint();
 }
 
@@ -2151,6 +2295,7 @@ void ZephyrEditor::refreshRack()
     rackView.setUnits (list);
     patchPanel.layoutJacks();
     for (size_t i = 0; i < tiles.size(); ++i) tiles[i]->setToggleState (proc.engine.inRack (kTileNodes[i]), juce::dontSendNotification);
+    layoutTiles();
     patchBay.repaint();
     lastRackHash = 0;
     for (auto& s : proc.engine.rackSlot) lastRackHash = lastRackHash * 31u + (uint32_t) (s.load() + 2);
@@ -2330,6 +2475,15 @@ void ZephyrEditor::timerCallback()
 }
 
 // ---------------------------------------------------------------- mise en page
+void ZephyrEditor::updateDrawers()
+{
+    saveDrawerPref ((patchOpen ? 1 : 0) | (stripOpen ? 2 : 0));
+    patchToggle.setButtonText (juce::String (patchOpen ? juce::CharPointer_UTF8 ("PATCHBAY  \xe2\x96\xbe") : juce::CharPointer_UTF8 ("PATCHBAY  \xe2\x96\xb8")));
+    stripToggle.setButtonText (juce::String (stripOpen ? juce::CharPointer_UTF8 ("MODULATION  \xe2\x96\xbe") : juce::CharPointer_UTF8 ("MODULATION  \xe2\x96\xb8")));
+    resized();
+    repaint();
+}
+
 void ZephyrEditor::resized()
 {
     const int W = getWidth(), H = getHeight();
@@ -2355,6 +2509,14 @@ void ZephyrEditor::resized()
     // ---- colonnes : panneau lateral | rack | (bandeau de modulation en bas)
     const int vpW = W - 170;
     const int top = kHeaderH + 8;
+    const int stripH = stripOpen ? 172 + 8 : 0;
+    patchToggle.setBounds (W - 310, 72, 148, 20);
+    stripToggle.setBounds (W - 158, 72, 148, 20);
+    {   // le texte des languettes suit l'etat (sans reappeler resized)
+        patchToggle.setButtonText (juce::String (patchOpen ? juce::CharPointer_UTF8 ("PATCHBAY  \xe2\x96\xbe") : juce::CharPointer_UTF8 ("PATCHBAY  \xe2\x96\xb8")));
+        stripToggle.setButtonText (juce::String (stripOpen ? juce::CharPointer_UTF8 ("MODULATION  \xe2\x96\xbe") : juce::CharPointer_UTF8 ("MODULATION  \xe2\x96\xb8")));
+    }
+    patchPanel.setVisible (patchOpen);
     patchPanel.setBounds (W - 310, top, 300, H - top - 10);
     side.setBounds (10, top, 150, H - top - 10);
     viewport.setBounds (170, top, vpW - 10, H - top - 8 - (hasStrip ? 172 + 8 : 2));
@@ -2366,6 +2528,7 @@ void ZephyrEditor::resized()
     // ---- bandeau de modulation
     {
         const int y = H - 8 - 172, gap = 8;
+        for (auto& su : stripUnits) su->setVisible (stripOpen);
         const float weights[4] { 3.f, 3.f, 3.f, 2.6f };
         const int usable = vpW - 10 - 3 * gap;
         int x = 170;
@@ -2378,7 +2541,7 @@ void ZephyrEditor::resized()
     }
 
     // ---- panneau lateral
-    for (size_t i = 0; i < tiles.size(); ++i) tiles[i]->setBounds (12, 34 + (int) i * 25, 126, 22);
+    layoutTiles();
     if (hasStrip)
     {
         knobById.at ("mix")->setBounds (8, 326, 67, 94);
@@ -2430,8 +2593,47 @@ void ZephyrEditor::cycleTheme()
     if (onThemeChanged) onThemeChanged();
 }
 
+juce::Rectangle<float> ZephyrEditor::scopeBtn (int k) const
+{
+    const auto scr = lampWindow().reduced (2.f);
+    const float y = scr.getBottom() - 15.f;
+    if (k == 2) return { scr.getRight() - 38.f, y, 34.f, 12.f };
+    if (k == 1) return { scr.getRight() - 58.f, y, 16.f, 12.f };
+    return { scr.getRight() - 77.f, y, 16.f, 12.f };
+}
+
+void ZephyrEditor::saveScopePref() const
+{
+    const auto f = scopeFile(); f.getParentDirectory().createDirectory();
+    f.replaceWithText (juce::String (scopeAuto ? 1 : 0) + "," + juce::String (scopeTrimDb, 1) + "," + juce::String (scopeManualDb, 1));
+}
+
+void ZephyrEditor::scopeNudge (float dDb)
+{
+    if (scopeAuto) scopeTrimDb = juce::jlimit (-12.f, 30.f, scopeTrimDb + dDb);
+    else           scopeManualDb = juce::jlimit (-12.f, 60.f, scopeManualDb + dDb);
+    saveScopePref(); repaint (headerArea);
+}
+
+void ZephyrEditor::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
+{
+    if (proc.headerScope.load() == 1 && lampWindow().contains (e.position)) scopeNudge ((w.deltaY > 0 ? 1.f : -1.f) * (e.mods.isShiftDown() ? 0.25f : 1.f));
+}
+
 void ZephyrEditor::mouseUp (const juce::MouseEvent& e)
 {
+    if (proc.headerScope.load() == 1 && lampWindow().contains (e.position) && ! e.mouseWasDraggedSinceMouseDown())
+    {
+        const float step = e.mods.isShiftDown() ? 0.5f : 3.f;                                 // pas de 3 dB (0,5 dB avec Maj) ; double-clic sur AUTO : remise a zero
+        if (scopeBtn (0).expanded (2.f).contains (e.position)) { scopeNudge (-step); return; }
+        if (scopeBtn (1).expanded (2.f).contains (e.position)) { scopeNudge (step); return; }
+        if (scopeBtn (2).expanded (2.f).contains (e.position))
+        {
+            if (e.getNumberOfClicks() >= 2) { scopeTrimDb = 0.f; scopeManualDb = 20.f; scopeAuto = ! scopeAuto; }
+            else scopeAuto = ! scopeAuto;
+            saveScopePref(); repaint (headerArea); return;
+        }
+    }
     if (lampWindow().contains (e.position) && ! e.mouseWasDraggedSinceMouseDown())
     {
         proc.headerScope.store (proc.headerScope.load() == 0 ? 1 : 0);
@@ -2531,8 +2733,12 @@ void ZephyrEditor::drawScope (juce::Graphics& g, juce::Rectangle<float> scr)
     }
     float pk = 0.f;
     for (int i = 0; i < span; ++i) pk = juce::jmax (pk, std::abs (buf[start + i]));
-    const float target = pk > 0.003f ? juce::jmin (6.f, 0.85f / pk) : 1.f;
-    scopeGain += (target - scopeGain) * 0.15f;
+    if (scopeAuto)
+    {
+        const float target = pk > 0.0003f ? juce::jmin (400.f, 0.85f / pk) * std::pow (10.f, scopeTrimDb / 20.f) : 1.f;          // auto : cale la crete a 85 % (jusqu'a +52 dB) + ajustement fin
+        scopeGain += (target - scopeGain) * 0.15f;
+    }
+    else scopeGain = std::pow (10.f, scopeManualDb / 20.f);
     juce::Path p;
     const int nx = (int) scr.getWidth();
     for (int x = 0; x <= nx; ++x)
@@ -2546,6 +2752,20 @@ void ZephyrEditor::drawScope (juce::Graphics& g, juce::Rectangle<float> scr)
     g.setColour (ph.withAlpha (0.16f)); g.strokePath (p, juce::PathStrokeType (5.f, juce::PathStrokeType::curved));
     g.setColour (ph.withAlpha (0.35f)); g.strokePath (p, juce::PathStrokeType (2.6f, juce::PathStrokeType::curved));
     g.setColour (ph.brighter (0.5f));   g.strokePath (p, juce::PathStrokeType (1.2f, juce::PathStrokeType::curved));
+    {   // commandes de gain : - / + / AUTO (molette sur l'ecran : 1 dB, Maj : 0,25 dB)
+        g.setFont (font (8.5f));
+        const juce::String nm[3] { "-", "+", scopeAuto ? "AUTO" : "MAN" };
+        for (int k = 0; k < 3; ++k)
+        {
+            const auto r = scopeBtn (k);
+            g.setColour (ph.withAlpha (k == 2 && scopeAuto ? 0.35f : 0.14f)); g.fillRoundedRectangle (r, 2.5f);
+            g.setColour (ph.withAlpha (0.7f)); g.drawRoundedRectangle (r, 2.5f, 0.8f);
+            g.drawText (nm[k], r, juce::Justification::centred, false);
+        }
+        const float db = 20.f * std::log10 (juce::jmax (1.0e-3f, scopeGain));
+        g.setColour (ph.withAlpha (0.75f));
+        g.drawText (juce::String (db >= 0.f ? "+" : "") + juce::String (db, 1) + " dB", scopeBtn (0).translated (-52.f, 0.f).withWidth (50.f), juce::Justification::centredRight, false);
+    }
     g.setColour (ph.withAlpha (0.6f));
     g.setFont (font (8.5f));
     g.drawText ("OSC", scr.withTrimmedLeft (5.f).withHeight (12.f).translated (0.f, scr.getHeight() - 13.f), juce::Justification::centredLeft, false);

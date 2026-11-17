@@ -15,6 +15,51 @@ private:
     juce::String wave, slew;
 };
 
+
+// Cadre d'ecran (lunette metal biseautee) autour d'un petit ecran ; renvoie la zone interieure
+juce::Rectangle<float> drawBezel (juce::Graphics& g, juce::Rectangle<float> b);
+
+// Vue animee : se redessine toute seule des qu'un des reglages lus change (courbes qui bougent avec les potards)
+class LiveView : public juce::Component, private juce::Timer
+{
+public:
+    LiveView (juce::AudioProcessorValueTreeState& a, std::vector<juce::String> ids) : apvts (a), pids (std::move (ids)) { startTimerHz (20); }
+    ~LiveView() override { stopTimer(); }
+protected:
+    float v (int i) const { auto* p = apvts.getRawParameterValue (pids[(size_t) i]); return p != nullptr ? p->load() : 0.f; }
+    juce::AudioProcessorValueTreeState& apvts;
+    std::vector<juce::String> pids;
+private:
+    void timerCallback() override { float h = 0.f; for (size_t i = 0; i < pids.size(); ++i) h += v ((int) i) * (float) (i * 37 + 11); if (h != last) { last = h; repaint(); } }
+    float last = -1.f;
+};
+
+// Reponse en frequence du filtre (modele choisi, coupure, resonance, passe-haut) : bouge avec les potards
+class FilterView : public LiveView
+{
+public:
+    explicit FilterView (juce::AudioProcessorValueTreeState& a) : LiveView (a, { "s_ftype", "s_lpf", "s_lpfRes", "s_hpf", "s_hpfRes", "s_semMorph", "s_drive", "s_fltEnv", "s_key" }) {}
+    void paint (juce::Graphics&) override;
+};
+
+// Courbe ADSR (filtre ou ampli) : bouge avec les potards. prefix : 'f' ou 'a'
+class EnvView : public LiveView
+{
+public:
+    EnvView (juce::AudioProcessorValueTreeState& a, char prefix)
+        : LiveView (a, { juce::String ("s_") + prefix + "A", juce::String ("s_") + prefix + "D", juce::String ("s_") + prefix + "S", juce::String ("s_") + prefix + "R" }) {}
+    void paint (juce::Graphics&) override;
+};
+
+// Flancs en bois, vis, aerations : decor de la fenetre (derriere l'editeur)
+class WoodFrame : public juce::Component
+{
+public:
+    static constexpr int kFlank = 26;
+    WoodFrame() { setInterceptsMouseClicks (false, false); }
+    void paint (juce::Graphics&) override;
+};
+
 // Volet de la matrice de modulation : un menu deroulant au-dessus des deux onglets (SYNTH et EFFECTS)
 class MatrixDrawer : public juce::Component
 {
@@ -23,7 +68,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 private:
-    struct Row { juce::ComboBox src, dst; DetentSlider amt { juce::Slider::LinearHorizontal, juce::Slider::NoTextBox }; };
+    struct Row { juce::ComboBox src, dst, dir; DetentSlider amt { juce::Slider::LinearHorizontal, juce::Slider::NoTextBox }; };      // dir : sens (avant / arriere / les deux)
     std::vector<std::unique_ptr<Row>> rows;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> comboAtt;
     std::vector<std::shared_ptr<void>> idAtt;       // attachements par identifiant (menus groupes)
@@ -78,21 +123,6 @@ private:
     int lane, shown = -2;
 };
 
-
-// Flanc en bois (gauche ou droite) : veinage procedural, mis en cache, suit le theme
-class WoodCheek : public juce::Component
-{
-public:
-    explicit WoodCheek (bool leftSide) : left (leftSide) { setInterceptsMouseClicks (false, false); }
-    void paint (juce::Graphics&) override;
-    void resized() override { cache = {}; }
-    void themeChanged() { cache = {}; repaint(); }
-private:
-    bool left;
-    juce::Image cache;
-    int cachedTheme = -1;
-};
-
 class SynthPanel : public juce::Component, private juce::Timer
 {
 public:
@@ -139,9 +169,9 @@ private:
     ZephyrAudioProcessor& proc;
     juce::Component content;
     ZephyrEditor fx;
-    WoodCheek cheekL { true }, cheekR { false };
     std::unique_ptr<SynthPanel> synthPanel, arpPanel;
     std::unique_ptr<MatrixDrawer> matrix;
+    WoodFrame wood;
     juce::TextButton synthTab { "SYNTH" }, arpTab { "ARP" }, fxTab { "EFFECTS" }, matrixBtn { "MATRIX" };
     juce::ComponentBoundsConstrainer constrainer;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SynthEditor)

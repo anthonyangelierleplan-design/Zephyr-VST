@@ -81,6 +81,16 @@ Deux plugins, même design, même dépôt :
 - Les contrôles continus (pression, bend, molette) ne découpent plus le rendu à l'échantillon près (au plus tous les 32 échantillons) : moins de charge avec un flux MIDI dense.
 - Test : `tools/tests/midi_hydrasynth.cpp` (MPE : chaque note suit sa pression, CC74 sans effet sur le cutoff) ; jeu MPE identique à l'échantillon près au même jeu en aftertouch polyphonique.
 
+## v3 (nouvelle interface et fonctions d'Orage v22c)
+- **Page SYNTH redessinée selon le trajet du signal** : sources (VCO 1, VCO 2, MIXER & DRIFT) → **VC FILTER** au centre avec sa courbe en direct (MS-10, Ladder CEM3320, SEM, **Prophet**) → enveloppes avec leurs courbes ADSR, LFO / S&H. Bandeau du bas : FM, **POLY-MOD**, WAVEFOLDER, MACROS (nommées d'après leur destination), KEY ASSIGN, raccourci ARP. Flancs en bois (teinte du thème, aussi sur Zephyr FX), lunettes d'écran, anneaux lumineux fins à la place des chiffres 0..10.
+- **FM** : onde sinus, FM **linéaire** ou exponentielle, **FEEDBACK**, **KEY SCALE**, 18 rapports, menu CHARACTER (17 caractères), DICE et MORE ; se combine avec le poly-mod.
+- **Matrice** : un **sens** par routage (AVANT / ARRIÈRE / LES DEUX) ; les anciens projets et presets sont convertis pour sonner pareil.
+- **MPE** : SETTINGS > MPE MODE et étendue de bend par note (±2 / 12 / 24 / 48), slide CC74 par note ; la détection automatique de la v2d reste active.
+- Changement de mode KEY ASSIGN sans coupure (l'arpège continue, rotation POLY sur 4 VCO conservée) ; SETTINGS > CLEAR ALL ASSIGNMENTS / RESTORE HYDRASYNTH MAP.
+- Drive du Ladder qui compense la perte de graves (visible sur la courbe), potard LFO du filtre sur le LFO 2, CHORD LEARN réparé, reprise SCALE corrigée, GATE de l'ARP recalé sur la plage 5..100 du CC 107, LFO de 0,05 à 1000 Hz (bloc de contrôle adaptatif pour les LFO rapides).
+- Gardé de Zephyr : filtre Prophet, sub / drift / poly-mod, 12 voix, limiteur de bus et réserve de polyphonie, section FX v2c (sans patchbay, SERIAL / PARALLEL, écrans animés), thèmes Aluminium / Crème / Minuit, macros CC 16..23. Les tiroirs FX d'Orage ne sont pas repris (le patchbay a été retiré en v2c).
+- Tests : `tools/tests/` : `midi_hydrasynth`, `midi_mpe`, `modes_matrice`, `reprise_midi_chord`, `fm_lineaire`, `stabilite_filtres`.
+
 ## Compilation (GitHub Actions)
 Chaque push sur `main` lance le build Windows et publie `Zephyr-VST3-Windows.zip` dans la Release **latest** du dépôt.
 Dézipper et copier `Zephyr.vst3` et `Zephyr FX.vst3` dans `C:\Program Files\Common Files\VST3` (remplacer la v1 : mêmes identifiants, les projets se rouvrent).

@@ -656,6 +656,8 @@ public:
     std::atomic<float> nodeLevel[kNumNodes];                       // v2c : crete a l'entree de chaque module (ecrans animes)
     std::atomic<float> phPhase { 0.f }, bpmNow { 120.f }, stutPhase { 0.f };            // vumeter du comp (dB de reduction) ; gateLed garde pour l'interface commune
     std::atomic<float> modLed[kNumSrc];
+    std::atomic<float> nodeLvl[kNumNodes] {};                          // niveau de sortie de chaque module (crete lissee)
+
     // entrees venues du synthe : 0-9 CV, 10 phaser feedback, 11-13 delay temps / feedback / mix, 14-16 reverb mix / decay / damp,
     // 17-24 stutter, 25-28 reverb taille / pre-delay / shimmer / largeur, 29-30 delay tone / mod, 31 ensemble speed, 32 comp,
     // 33 wide spread, 34 sat tone, 35-37 EQ
@@ -884,7 +886,7 @@ private:
 
             if (nd != NOut && (bypassMask.load() & (1u << nd)) != 0)       // module contourne : le signal passe tel quel
             {
-                out[nd] = par2 ? out[parFirst] : in;
+                out[nd] = par2 ? out[parFirst] : in; nodeLvl[nd].store (0.f, std::memory_order_relaxed);
                 if (nd == NComp) compGr.store (0.f);
                 done[nd] = true;
                 continue;
@@ -906,6 +908,12 @@ private:
             if (par2)                                                      // ajoute la part "wet" du premier module
                 for (int c = 0; c < nc; ++c) for (int i = 0; i < n; ++i) out[nd].ch[c][i] += out[parFirst].ch[c][i] - parIn.ch[c][i];
             done[nd] = true;
+            if (nd != NOut)
+            {
+                float pk = 0.f;
+                for (int c = 0; c < nc; ++c) for (int i = 0; i < n; ++i) pk = std::max (pk, std::fabs (out[nd].ch[c][i]));
+                nodeLvl[nd].store (std::max (pk, nodeLvl[nd].load() * 0.9f), std::memory_order_relaxed);
+            }
         }
     }
 

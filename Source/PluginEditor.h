@@ -115,7 +115,7 @@ public:
 
     juce::StringArray choices;
     DetentSlider slider;
-    juce::String text, loText, hiText;
+    juce::String text, loText, hiText, baseText;
     int cvIndex;                                     // destination CV associee (ou -1)
     bool cvActive = false;
 private:
@@ -278,7 +278,12 @@ public:
     std::function<bool()> isActive;                  // false : module contourne (bypass)
     std::function<void()> onToggleActive;
     int currentHeight() const { return collapsed ? 26 : fullHeight; }
+    std::function<float()> level;                    // niveau de sortie du module (0..1) : anime la face (circuit imprime qui s'allume)
+    void tickAnim();                                 // appele a 30 Hz par l'editeur
 private:
+    float glow = 0.f, lastGlow = 0.f, animT = 0.f;
+    juce::Rectangle<float> animRect() const;
+    void drawCircuit (juce::Graphics&, juce::Rectangle<float>, int seed, float glowV, float t, juce::Colour accent) const;
     struct JackSlot { Jack* jack; int col, row; juce::String label; };
     std::vector<JackSlot> jackSlots;
     int jackCols = 0;
@@ -355,6 +360,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseUp (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
     // appels du rack
     void rackChangedByUser (const std::vector<int>& newOrder);
@@ -397,11 +403,19 @@ private:
     juce::Viewport viewport;
     PlatePanel side { "MODULES" };
     std::vector<std::unique_ptr<juce::TextButton>> tiles;       // une par module audio
+    std::vector<int> tilePos;                                   // rang d'affichage de chaque tuile : les modules du rack d'abord, dans l'ordre du rack
+    void layoutTiles();
     PatchBay patchBay;
     PatchPanel patchPanel { *this };
     std::unique_ptr<ZephyrDialog> dialog;
     Jack *jackIn = nullptr, *jackOut = nullptr, *jackMix = nullptr;
     LedToggle cablesBtn, midiBtn;
+    juce::TextButton patchToggle, stripToggle;           // tiroirs : replier le patchbay (colonne de droite) / le bandeau LFO-S&H-ENV
+    bool patchOpen = false, stripOpen = true;   // Zephyr : pas de patchbay (v2c)
+    void updateDrawers();
+public:
+    void setDrawerTogglesVisible (bool) { patchToggle.setVisible (false); stripToggle.setVisible (false); }   // Zephyr : pas de tiroirs (patchbay retire)   // languettes PATCHBAY / MODULATION : onglet EFFECTS seulement
+private:
     juce::TextButton settingsBtn;                       // synthe : panneau des reglages globaux (qualite, lissage, aftertouch)
     juce::Label midiMon;
 
@@ -422,6 +436,10 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> footAtt;
     juce::TextButton clearRackBtn, clearPatchBtn, resetBtn, themeBtn { "THEME" };
     float scopeGain = 1.f;
+    bool scopeAuto = true; float scopeTrimDb = 0.f, scopeManualDb = 20.f;       // oscilloscope : gain auto (+ ajustement fin) ou manuel
+    juce::Rectangle<float> scopeBtn (int k) const;                               // 0 : '-', 1 : '+', 2 : AUTO
+    void scopeNudge (float dDb);
+    void saveScopePref() const;
 public:
     std::function<void()> onThemeChanged;                        // pour que la fenetre parente repeigne ses propres fonds
 private:

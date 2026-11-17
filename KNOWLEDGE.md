@@ -128,3 +128,10 @@ Table de données (tools/presets/presets.py) → code C++ → banc de test qui j
 - Symptome : « en polyphonie, le filtre tremble sur toutes les notes avec l'aftertouch », une note seule OK, le lissage de l'aftertouch n'y change rien -> penser MPE : chaque note sur son canal, pression de canal PAR NOTE, CC74 par note, bend par note. Traiter la pression de canal comme globale la fait sauter d'une note a l'autre.
 - Correction : retenir le canal de chaque note ; pression d'un canal -> aftertouch de SA note ; bend d'un canal de note -> sa note (±48) ; CC des canaux de notes ignores pour les potards (canal maitre 1 seulement). Detection automatique (notes tenues sur plusieurs canaux / canal qui tourne), y compris sur les notes du bloc courant (les CC74 arrivent avec la note).
 - Piege de test : getSampleRate() vaut 0 hors hote (prepareToPlay appele a la main) -> toute duree calculee avec elle vaut 0.
+
+## Zephyr v3 : reprendre Orage v22c
+- Meme methode que la v2 : fusion a trois voies (base = Orage v20b 5ff41fa, ours = Zephyr v2d, theirs = Orage v22c, renommages sed avant). Pour l'editeur du synthe (entierement refait dans Orage), partir du fichier d'Orage et y remettre les specificites Zephyr (Prophet, MIXER & DRIFT, unite POLY-MOD, SHIFT / CLUSTER de l'ARP, familles de destinations) plutot que fusionner.
+- A retirer apres fusion : `pruneUnusedModules` d'Orage (parametres FX d'Orage) -> Zephyr a `pruneRack` ; champs de theme absents (`metalHi/Lo` -> `capHi/Lo`) ; largeur figee 1440 de l'editeur d'effets seul -> largeur de conception + flancs.
+- Piege : un booleen de membre par defaut (`patchOpen = true`) reactive le patchbay dans la version FX seule si son forcage est sous `#if ZEPHYR_SYNTH` : toujours tester les DEUX cibles (rendu de Zephyr FX).
+- Piege de rendu : le harnais lit le theme dans un fichier partage -> ne pas lancer plusieurs rendus de themes differents en parallele.
+- Evenements MPE dans le processeur : 11 = bend par note, 16 = slide (le 12 d'Orage est pris par l'arp de Zephyr).

@@ -841,11 +841,15 @@ private:
             }
         }
         const bool glide = P.glide > 0.001f && lastNote >= 0;
-        *v = Voice();
+        // voix reutilisee alors qu'elle sonne encore (vol de voix, MONO pendant le release) : comme sur un vrai synthe, elle garde son etat
+        // (enveloppes repartant de leur niveau actuel, filtres, oscillateurs qui continuent) -> plus de clic ; sinon voix neuve
+        const bool reuse = v->active;
+        if (! reuse) *v = Voice();
+        else { v->pat = v->pat1 = v->patS = 0.f; v->nBend = v->nBendS = 0.f; v->slide = 0.f; }
         v->active = true; v->gated = true; v->raw = raw; v->slot = slot; v->note = note; v->vel = vel; v->age = ++counter;
         v->uniCents = cents; v->uniPan = pan; v->gainV = gain;
         v->pitch = glide ? (float) lastNote : (float) note;
-        if (phaseFree) { v->ph1 = rndU(); v->ph2 = rndU(); v->subFlip = rndU() < 0.5f; }   // oscillateurs libres : chaque note demarre ailleurs dans le cycle (sinon : toujours au meme point)
+        if (phaseFree && ! reuse) { v->ph1 = rndU(); v->ph2 = rndU(); v->subFlip = rndU() < 0.5f; }   // oscillateurs libres : chaque note demarre ailleurs dans le cycle (sinon : toujours au meme point)
         v->aenv.on(); v->fenv.on(); v->e2.on(); lastVel = vel;
         v->rndv = rnd(); lastRnd = v->rndv; lastKey = std::max (-1.f, std::min (1.f, ((float) note - 60.f) / 48.f));
         for (int i = 0; i < kLfos; ++i) { v->lph[i] = 0.f; v->lfade[i] = 0.f; v->lsh[i] = rnd(); v->lcur[i] = v->lsh[i]; }

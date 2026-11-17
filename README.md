@@ -110,6 +110,13 @@ Deux plugins, même design, même dépôt :
 - **SETTINGS > VCO MODEL** : *Analog* (defaut : rampe legerement bombee, sommets du triangle arrondis, liaison capacitive ~5 Hz qui fait s'affaisser le carre dans le grave, petites differences de forme / largeur / niveau entre les voix) ou *Clean digital*.
 - Test : `tools/tests/vco_phase_sync`.
 
+## v3c (audit enveloppes et effets)
+- **Plus de clic quand une voix est reutilisee** (vol de voix a la 13e note, MONO qui rejoue pendant le release) : comme sur un vrai synthe, la voix garde son etat (enveloppes qui repartent de leur niveau, filtres et oscillateurs qui continuent). Mesure : saut de +14 dB (vol) et +36 dB (MONO) -> au niveau du jeu normal.
+- **Lignes a retard en interpolation cubique** (ensemble, delay, reverb, pitch-shift du shimmer) : l'ensemble perd son grain dans l'aigu (-27 -> -35 dB), la reverb est plus propre (-52 -> -58 dB) ; couleur de la reverb conservee (amortissement et filtre de sortie recales : duree de queue et spectre a moins d'1 dB / 5 % d'avant).
+- **Saturation surechantillonnee avec filtres elliptiques** (-95 dB) : repliement -74 / -89 dB -> -123 dB.
+- Verifies sans defaut : courbes et plages des enveloppes (1 ms a 5 s, attaque en charge de condensateur), fin de note, crepitement des reglages (aucun), denormaux (le plugin est protege), bruit residuel des effets.
+- Tests : `tools/tests/continuite_voix`, `tools/tests/audit_effets_zephyr`.
+
 ## Compilation (GitHub Actions)
 Chaque push sur `main` lance le build Windows et publie `Zephyr-VST3-Windows.zip` dans la Release **latest** du dépôt.
 Dézipper et copier `Zephyr.vst3` et `Zephyr FX.vst3` dans `C:\Program Files\Common Files\VST3` (remplacer la v1 : mêmes identifiants, les projets se rouvrent).

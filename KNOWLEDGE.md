@@ -155,3 +155,9 @@ Table de données (tools/presets/presets.py) → code C++ → banc de test qui j
 - Surechantillonnage : boucle de facOsc sous-echantillons autour de toute la section VCO, puis decimation demi-bande (23 puis 15 coefficients). Appeler les deux down() du x4 dans des instructions separees (ordre d'evaluation des arguments non garanti en C++ -> son faux en High Fidelity). Bruit x sqrt(facOsc) pour garder son niveau.
 - Phase libre : phase aleatoire a chaque nouvelle voix (Zephyr ne le faisait que si DRIFT > 0).
 
+## v3c : audit enveloppes et effets
+- Voix reutilisee (vol, MONO pendant le release) : ne pas faire `*v = Voice()` si la voix sonne encore ; ne remettre que l'expression par note -> plus de clic. Mesure : saut de la derivee seconde au moment de l'evenement.
+- Banc d'effets : toujours activer FTZ/DAZ (`_mm_setcsr (... | 0x8040)`, comme juce::ScopedNoDenormals) sinon faux "ralentissements" ; sinus de test en double precision (en float, raies parasites a -68 dB qui viennent du generateur).
+- Reverb (Dattorro) : la lecture lineaire des lignes assombrissait la queue en boucle ; en Hermite il faut dampHz x0,73 + passe-bas 8 kHz en sortie pour garder la couleur.
+- Surechantillonneur x4 : elliptique normalise (ordre 9 a 2x, ordre 5 a 4x, -95 dB). Un ecretage tres dur sur fondamentale aigue replie quand meme (harmoniques > 100 kHz) : ADAA necessaire pour aller plus loin.
+

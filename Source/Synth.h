@@ -427,6 +427,21 @@ inline float busClip (float x)
     if (a < 0.9f) return x;
     return (x < 0.f ? -1.f : 1.f) * (0.9f + 0.25f * std::tanh ((a - 0.9f) / 0.25f));
 }
+// loi du potard RESONANCE du filtre Prophet, calee sur un Prophet-6 (LPF) enregistre : presque pas de bosse jusqu'a 50 % (+2 dB),
+// montee rapide entre 50 et 75 % (+21 dB), auto-oscillation tout en haut. Valeur = part du gain de retour maximal (4,04).
+inline constexpr float kProResLaw[17] { 0.0000f, 0.0235f, 0.0499f, 0.0788f, 0.1100f, 0.1407f, 0.1726f, 0.2120f, 0.2650f, 0.3865f, 0.5783f, 0.7673f, 0.8800f, 0.9270f, 0.9651f, 0.9907f, 1.0000f };
+inline float proResLaw (float r)
+{
+    const float x = std::min (1.f, std::max (0.f, r)) * 16.f; const int i = std::min (15, (int) x);
+    return kProResLaw[i] + (kProResLaw[i + 1] - kProResLaw[i]) * (x - (float) i);
+}
+inline float proResInv (float m)                                  // inverse : reglage du potard qui donne la meme resonance qu'avant la v3 (presets, anciens projets)
+{
+    m = std::min (1.f, std::max (0.f, m));
+    int i = 0; while (i < 15 && kProResLaw[i + 1] < m) ++i;
+    const float d = kProResLaw[i + 1] - kProResLaw[i];
+    return ((float) i + (d > 0.f ? (m - kProResLaw[i]) / d : 0.f)) / 16.f;
+}
 struct ProphetSsm
 {
     float v[4] {}, t[4] {}; unsigned rs = 777u;
@@ -1023,7 +1038,12 @@ private:
         const int facFlt = P.quality <= 0 ? 2 : (P.quality == 1 ? 4 : 8), facFx = P.quality >= 2 ? 8 : 4;
         float c1[20] = { gL, gH, kL, kH, kSem, kLad, res, morph, drive, drvEmph, foldA, foldS, level, lv1, l2, noiseA, 0.f, 0.f, 0.f, 0.f };
         if (P.ftype == 0) sy::Ms10Tab::get().controls (2.0 * fs * (double) gL, (double) res, msC, c1[16], c1[17], c1[18]);       // MS-10 : resistance des etages, retour PEAK
-        if (P.ftype == 1 || P.ftype == 3) c1[16] = 4.04f * res;                                                                  // CEM3320 / SSM2040 : gain de retour (auto-oscillation au-dessus de 4)
+        if (P.ftype == 1) c1[16] = 4.04f * res;
+        else if (P.ftype == 3)                                                                                                    // Prophet : loi du Prophet-6
+        {
+            const float m = sy::proResLaw (res), xf = std::min (1.3f, lpfHz / 13000.f);
+            c1[16] = 4.04f * m * (1.f - 0.09f * xf * xf * std::min (1.f, std::max (0.f, (1.f - m) / 0.12f)));   // le retour perd un peu de gain dans l'aigu (pic moins haut au-dessus de 7 kHz, comme le vrai) ; auto-oscillation intacte a fond
+        }                                                                  // CEM3320 / SSM2040 : gain de retour (auto-oscillation au-dessus de 4)
         else if (P.ftype == 2) c1[16] = 1.9f * std::pow (1.f - res, 1.3f) + 0.03f;                                               // SEM : amortissement (potard RES)
         if (! v.cInit) { for (int q = 0; q < 20; ++q) v.c0[q] = c1[q]; v.cInit = true; }
         float cd[20]; for (int q = 0; q < 20; ++q) cd[q] = (c1[q] - v.c0[q]) / (float) len;
@@ -1088,7 +1108,7 @@ private:
             else if (P.ftype == 3)
             {
                 const float kq = cc[16], g2 = sy::gHalfN (gLm, facFlt) * (1.f + kProTune * std::min (1.f, std::max (0.f, (kq - 3.8f) * 4.2f)));
-                lp = v.osV.run (dx, facFlt, [&v, g2, kq] (float u) { return v.pro.run (u, g2, kq); }) * (0.75f + res * (0.4f + 1.6f * (drive - 1.f) / 5.f));   // meme compensation des graves par le DRIVE
+                lp = v.osV.run (dx, facFlt, [&v, g2, kq] (float u) { return v.pro.run (u, g2, kq); }) * (0.75f + sy::proResLaw (res) * (0.4f + 1.6f * (drive - 1.f) / 5.f));   // meme compensation des graves par le DRIVE
             }
             else
             {

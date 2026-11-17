@@ -310,7 +310,8 @@ void FilterView::paint (juce::Graphics& g)
         C s (0.f, hz / fc), H;
         if (type == 1 || type == 3)                                                      // echelle 4 poles a retour (Ladder, Prophet) : le pic se paie en gain de bande passante
         {
-            const C p1 = C (1.f) + s, p2 = p1 * p1, G = C (1.f) / (p2 * p2); H = G / (C (1.f) + C (4.f * res) * G);
+            const float kr = type == 3 ? zephyr::sy::proResLaw (res) : res;                   // Prophet : loi de resonance du Prophet-6
+            const C p1 = C (1.f) + s, p2 = p1 * p1, G = C (1.f) / (p2 * p2); H = G / (C (1.f) + C (4.f * kr) * G);
         }
         else
         {
@@ -320,7 +321,7 @@ void FilterView::paint (juce::Graphics& g)
         }
         { const float dN = juce::jlimit (0.f, 1.f, v (6)); const C sE (0.f, hz / 1200.f); H *= C (1.f) + C (4.5f * dN) * (sE / (C (1.f) + sE));      // DRIVE : accent des aigus avant le filtre
           if (type == 1) H *= 1.f + res * (1.2f + 2.3f * dN);
-          if (type == 3) H *= 0.75f + res * (0.4f + 1.6f * dN); }                                                                                   // Ladder : le drive compense la perte de graves due au PEAK
+          if (type == 3) H *= 0.75f + zephyr::sy::proResLaw (res) * (0.4f + 1.6f * dN); }                                                                                   // Ladder : le drive compense la perte de graves due au PEAK
         if (hpf > 0.005f) { const C sh (0.f, hz / fh); H *= (sh * sh) / (sh * sh + sh / qH + C (1.f)); }
         const float db = 20.f * std::log10 (std::abs (H) + 1e-6f);
         const float px = b.getX() + (float) i, py = Y (db);

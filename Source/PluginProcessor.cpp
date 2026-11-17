@@ -1039,6 +1039,7 @@ juce::ValueTree ZephyrAudioProcessor::captureState()
     state.setProperty ("lfoV2", 1, nullptr);                               // plage de vitesse des LFO elargie (0.05..300 Hz)
     state.setProperty ("zv2", 1, nullptr); state.setProperty ("zv2c", 1, nullptr);                                 // Zephyr v2 : filtres circuit (0 MS-10, 1 CEM3320, 2 SEM, 3 Prophet), nouvelles destinations
     state.setProperty ("dirV3", 1, nullptr);                               // matrice : quantite 0..1 + sens par routage (v3)
+    state.setProperty ("proP6", 1, nullptr);                               // resonance du filtre Prophet : loi du Prophet-6 (v3)
     state.setProperty ("patch", juce::String (engine.serializePatch()), nullptr);
     state.setProperty ("rack", juce::String (engine.serializeRack()), nullptr);
     state.setProperty ("bypass", (int) engine.bypassMask.load(), nullptr);
@@ -1133,6 +1134,14 @@ void ZephyrAudioProcessor::applyState (juce::ValueTree state)
                     c.setProperty ("value", (float) c.getProperty ("value", 0.4) * 0.8784f, nullptr);
             }
 #if ZEPHYR_SYNTH
+    if (! state.hasProperty ("proP6"))                                     // ancien projet sur le filtre Prophet : on garde la meme resonance
+    {
+        juce::ValueTree ftN, resN;
+        for (auto c : state)
+            if (c.hasProperty ("id")) { const auto id = c.getProperty ("id").toString(); if (id == "s_ftype") ftN = c; else if (id == "s_lpfRes") resN = c; }
+        if (ftN.isValid() && resN.isValid() && juce::roundToInt ((float) ftN.getProperty ("value", 0.0)) == 3)
+            resN.setProperty ("value", zephyr::sy::proResInv ((float) resN.getProperty ("value", 0.0)), nullptr);
+    }
     if (! state.hasProperty ("dirV3"))                                     // ancien projet / preset : quantite signee -> (quantite, sens) pour que le son reste identique
     {
         for (int sl = 1; sl <= zephyr::kSlots; ++sl)
@@ -1376,6 +1385,8 @@ void ZephyrAudioProcessor::loadFactoryPreset (int i)
     }
 #if ZEPHYR_SYNTH
     if (i != 0) { applyMacroSet (*this, kFactory[i].category); pruneRack(); }
+    if (auto* ft = apvts.getRawParameterValue ("s_ftype")) if (juce::roundToInt (ft->load()) == 3)       // filtre Prophet : presets ecrits avec l'ancienne loi de resonance -> meme son
+        if (auto* rs = apvts.getRawParameterValue ("s_lpfRes")) setParamReal ("s_lpfRes", zephyr::sy::proResInv (rs->load()));
 #endif
     presetName = kFactory[i].name;
     presetCategory = kFactory[i].category;

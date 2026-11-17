@@ -89,7 +89,11 @@ Deux plugins, même design, même dépôt :
 - Changement de mode KEY ASSIGN sans coupure (l'arpège continue, rotation POLY sur 4 VCO conservée) ; SETTINGS > CLEAR ALL ASSIGNMENTS / RESTORE HYDRASYNTH MAP.
 - Drive du Ladder qui compense la perte de graves (visible sur la courbe), potard LFO du filtre sur le LFO 2, CHORD LEARN réparé, reprise SCALE corrigée, GATE de l'ARP recalé sur la plage 5..100 du CC 107, LFO de 0,05 à 1000 Hz (bloc de contrôle adaptatif pour les LFO rapides).
 - Gardé de Zephyr : filtre Prophet, sub / drift / poly-mod, 12 voix, limiteur de bus et réserve de polyphonie, section FX v2c (sans patchbay, SERIAL / PARALLEL, écrans animés), thèmes Aluminium / Crème / Minuit, macros CC 16..23. Les tiroirs FX d'Orage ne sont pas repris (le patchbay a été retiré en v2c).
-- Tests : `tools/tests/` : `midi_hydrasynth`, `midi_mpe`, `modes_matrice`, `reprise_midi_chord`, `fm_lineaire`, `stabilite_filtres`.
+- **Filtre PROPHET calé sur un vrai Prophet-6** (LPF, dent de scie en Do, balayages du cutoff à 0 / 25 / 50 / 75 % de résonance et en auto-oscillation) :
+  - la pente était déjà la bonne (±0,5 dB) ; la **loi du potard RESONANCE** suit maintenant celle du Prophet-6 : quasi pas de bosse jusqu'à 50 % (+2 dB), montée rapide jusqu'à +21 dB à 75 %, auto-oscillation tout en haut (pure, comme le vrai) ;
+  - le pic perd un peu de hauteur au-dessus de 7 kHz, comme sur le vrai ; la courbe affichée suit la même loi ;
+  - les 15 presets sur le filtre Prophet et les anciens projets gardent exactement leur son (réglage RES converti automatiquement).
+- Tests : `tools/tests/` : `midi_hydrasynth`, `midi_mpe`, `modes_matrice`, `reprise_midi_chord`, `fm_lineaire`, `stabilite_filtres`, `prophet6_resonance`.
 
 ## Compilation (GitHub Actions)
 Chaque push sur `main` lance le build Windows et publie `Zephyr-VST3-Windows.zip` dans la Release **latest** du dépôt.

@@ -135,3 +135,11 @@ Table de données (tools/presets/presets.py) → code C++ → banc de test qui j
 - Piege : un booleen de membre par defaut (`patchOpen = true`) reactive le patchbay dans la version FX seule si son forcage est sous `#if ZEPHYR_SYNTH` : toujours tester les DEUX cibles (rendu de Zephyr FX).
 - Piege de rendu : le harnais lit le theme dans un fichier partage -> ne pas lancer plusieurs rendus de themes differents en parallele.
 - Evenements MPE dans le processeur : 11 = bend par note, 16 = slide (le 12 d'Orage est pris par l'arp de Zephyr).
+
+## Caler un filtre sur des enregistrements (Prophet-6, Zephyr v3)
+- Materiel ideal : une note fixe (dent de scie), balayage lent du cutoff aller-retour, une prise par position de resonance (0/25/50/75 %, plein). Les niveaux d'enregistrement peuvent differer : ne comparer que des rapports DANS une prise.
+- Mesure : amplitude de chaque harmonique image par image (f0 suivie image par image : la derive du vrai synthe fait ±1 %) ; reponse = harmoniques / spectre "filtre ouvert" de la prise 0 % ; hauteur du pic = harmonique la plus forte - fondamentale. Rendre le plugin avec la meme note et la meme analyse (l'echantillonnage par harmoniques sous-estime les pics etroits, mais pareil des deux cotes).
+- Resultats Prophet-6 LPF : pente identique au modele 4 poles a ±0,5 dB ; pic +0 dB a 25 %, +2..3 dB a 50 %, +16..27 dB a 75 % (monte avec le cutoff), auto-oscillation sinus tres pure (H2 -45 dB, H3 -49 dB) a niveau constant de 200 Hz a 12 kHz.
+- Correction : table de 17 points (PCHIP) part du retour maximal = f(potard) [0, .11, .265, .88, 1 a 0/25/50/75/100 %] + perte de retour dans l'aigu (-9 % a 13 kHz, nulle a pleine resonance). Presets et anciens projets : RES converti par la table inverse (drapeau d'etat `proP6`) pour garder le son.
+- Piege : la prise "auto oscillation" ne contenait plus du tout la dent de scie (fondamentale au bruit de fond) -> elle ne sert qu'a mesurer l'oscillation elle-meme.
+

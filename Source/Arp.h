@@ -60,12 +60,14 @@ public:
     struct Ev { int pos; bool on; int note; float vel; bool stack; int lane = -1; float val = 0.f; int slot = -1; };
 
     void prepare (float sampleRate) { fs = sampleRate; reset(); }
-    void reset() { nPend = 0; rot = 0; for (auto& sn : slotNote) sn = -1; soundingSlot = curSlot = -1; flushReq = false; nKeys = 0; sounding = -1; soundingStack = false; idx = 0; phase = 0.999999f; stamp = 0; stepCount = 0; running = false; stepOdd = false; active = false; ratchetN = 1; lastSub = -1; }
+    void reset() { nPend = 0; rot = 0; for (auto& sn : slotNote) sn = -1; soundingSlot = curSlot = -1; flushReq = false; nKeys = 0; sounding = -1; soundingStack = false; idx = 0; phase = 0.999999f; stamp = 0; stepCount = 0; running = false; stepOdd = false; active = false; ratchetN = 1; lastSub = -1; idle = 1.0e12; }
     void setParams (const ArpParams& p) { P = p; }
     void setPattern (const ArpPattern* p) { pat = p; }
     void setChord (const int* iv, int n) { chordN = std::min (6, std::max (0, n)); for (int i = 0; i < chordN; ++i) chord[i] = iv[i]; }
     void allOff() { nKeys = 0; }
-    void resetVoices() { flushReq = true; }        // changement de mode : on relache ce qui sonne, les touches et le motif restent
+    void resetVoices() { flushReq = true; }
+    // mode SEQ : horloge calee sur le DAW quand il joue (position en pas depuis le debut du morceau, au debut du bloc)
+    void setHost (bool lock, double stepPos) { hostLock = lock && stepPos >= 0.0; hostStep = stepPos; }        // changement de mode : on relache ce qui sonne, les touches et le motif restent
     int currentStep() const { return running ? (stepCount > 0 ? (stepCount - 1) : 0) : -1; }   // pour l'affichage du pas courant
 
     void noteOn (int note, float vel)
@@ -73,7 +75,7 @@ public:
         const bool latch = P.on == 2 || P.hold;
         if (latch && physCount() == 0 && nKeys > 0) nKeys = 0;           // nouvelle prise apres relachement complet : remplace les notes verrouillees
         for (int i = 0; i < nKeys; ++i) if (keys[i].note == note) { keys[i].vel = vel; keys[i].phys = true; keys[i].t = ++stamp; return; }
-        if (nKeys == 0 && ! P.free) { phase = 0.999999f; idx = 0; stepCount = 0; }   // le premier pas part tout de suite
+        if (nKeys == 0 && ! P.free && ! P.seq) { phase = 0.999999f; idx = 0; stepCount = 0; }   // le premier pas part tout de suite (SEQ : l'horloge continue, voir process)
         if (nKeys < kKeys) keys[nKeys++] = { note, vel, true, ++stamp };
     }
     void noteOff (int note)
@@ -125,16 +127,47 @@ public:
         const bool planned = P.assign == 0 && ! P.seq && (sh > 0.001f || cl > 0.001f);
         const float base = std::max (0.f, stepHz) / fs;
         const float sw = std::min (0.5f, std::max (0.f, P.swing) * 0.5f);
+        if (P.seq && hostLock)
+        {
+            // SEQ calé sur le DAW : position "sans swing" de l'horloge interne comparee a celle du morceau ; recalage si elles divergent
+            const int k = std::max (0, stepCount - 1);
+            const double sIn = 2.0 * (double) (k / 2) + ((k & 1) == 0 ? (double) std::min (phase, 1.f) * (1.0 + sw) : (1.0 + sw) + (double) std::min (phase, 1.f) * (1.0 - sw));
+            if (std::abs (sIn - hostStep) > 0.02 || stepCount == 0)
+            {
+                const double m = std::floor (hostStep / 2.0), u = hostStep - 2.0 * m;
+                const int kk = (int) (2.0 * m) + (u < 1.0 + sw ? 0 : 1);
+                const float ph = (float) (u < 1.0 + sw ? u / (1.0 + sw) : (u - 1.0 - sw) / (1.0 - sw));
+                stepOdd = (kk & 1) != 0;
+                if (go0() && ph * stepLen < 0.03f * fs) { stepCount = kk; phase = 1.f + ph; }  // le pas vient de commencer (< 30 ms) : il part tout de suite
+                else { stepCount = kk + 1; phase = ph; active = false; }
+            }
+        }
         for (int i = 0; i < n; ++i)
         {
-            const bool go = nKeys > 0 || P.free;
+            const bool go = go0();
             if (! go)
             {
                 off (i); dropPendingOns();
                 if (running) { lanesOut (i, true); running = false; }
+                if (P.seq)
+                {
+                    // SEQ : l'horloge continue sans jouer, pour qu'une nouvelle note reparte en tempo
+                    if (idle < 1.0e9) idle += 1.0;
+                    phase += base / (stepOdd ? (1.f - sw) : (1.f + sw));
+                    if (phase >= 1.f) { phase -= std::floor (phase); const int cs = stepCount++; stepOdd = (cs & 1) != 0; }
+                    active = false;
+                    continue;
+                }
                 phase = 0.999999f; idx = 0; stepCount = 0; active = false; rot = 0;
                 continue;
             }
+            if (P.seq && ! running)
+            {
+                const double idleMax = (double) stepLen * (double) std::max (4, std::min (kArpSteps, P.len));
+                if (! hostLock && idle > idleMax) { phase = 0.999999f; stepCount = 0; idx = 0; }   // longue pause : le motif repart du debut, tout de suite
+                else if (phase * stepLen < 0.03f * fs && stepCount > 0) { --stepCount; phase += 1.f; }   // reprise en tempo : touche a peine en retard (< 30 ms) -> le pas en cours joue quand meme
+            }
+            idle = 0.0;
             running = true;
             phase += base / (stepOdd ? (1.f - sw) : (1.f + sw));
             if (phase >= 1.f)
@@ -261,6 +294,8 @@ private:
     int slotNote[kVco] { -1, -1, -1, -1 }, rot = 0, nPend = 0, curSlot = -1, soundingSlot = -1;
     struct Pend { int at; Ev ev; } pend[kPend];
     float fs = 44100.f, phase = 0.999999f, curVel = 0.8f;
+    double idle = 1.0e12, hostStep = 0.0; bool hostLock = false;
+    bool go0() const { return nKeys > 0 || P.free; }
     uint64_t stamp = 0; uint32_t rng = 0x1234567u;
     ArpParams P;
     const ArpPattern* pat = nullptr;

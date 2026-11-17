@@ -143,3 +143,8 @@ Table de données (tools/presets/presets.py) → code C++ → banc de test qui j
 - Correction : table de 17 points (PCHIP) part du retour maximal = f(potard) [0, .11, .265, .88, 1 a 0/25/50/75/100 %] + perte de retour dans l'aigu (-9 % a 13 kHz, nulle a pleine resonance). Presets et anciens projets : RES converti par la table inverse (drapeau d'etat `proP6`) pour garder le son.
 - Piege : la prise "auto oscillation" ne contenait plus du tout la dent de scie (fondamentale au bruit de fond) -> elle ne sert qu'a mesurer l'oscillation elle-meme.
 
+## v3b : FM, sequenceur
+- Rapport FM : la hauteur du VCO 2 = VCO 1 x rapport ; ajouter 12*oct2 + tune2 + fine2 par-dessus, sinon ces potards sont morts.
+- SEQ : dans Arp, ne jamais remettre phase/stepCount a zero sur noteOn en mode SEQ ; faire tourner l'horloge a vide quand aucune touche n'est tenue ; caler sur le DAW au debut du bloc (position en pas = ppq x pas par temps) en comparant les positions "sans swing" (pas pair long de 1+sw, impair de 1-sw), recaler seulement si l'ecart > 0,02 pas.
+- Processeur : TYPE SEQ force ap.on = 1 (sauf enregistrement pas a pas).
+

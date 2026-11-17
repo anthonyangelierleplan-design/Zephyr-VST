@@ -996,7 +996,8 @@ private:
         const float n1 = v.pitch + 12.f * (float) P.oct1 + bend + v.nBendS + md[MdPitch] * 12.f + (v.uniCents + dc1) * 0.01f + vibSt;
         const float n2 = v.pitch + 12.f * (float) P.oct2 + P.tune2 + P.fine2 * 0.01f + bend + v.nBendS + md[MdPitch] * 12.f + md[MdPitch2] * 12.f + (v.uniCents + dc2) * 0.01f;
         // rapport de frequence entre les deux VCO (FM) : VCO2 suit VCO1 x rapport, la hauteur propre de VCO2 est ignoree
-        const float n2r = P.fmRatio > 0 ? n1 + 12.f * std::log2 (kFmRatios[std::min (17, P.fmRatio)]) + P.fmFine * 0.5f + md[MdPitch2] * 12.f : n2 + P.fmFine * 0.5f;
+        // rapport FM : la hauteur du VCO 2 suit le VCO 1 selon le rapport, et OCTAVE / TUNE / FINE du VCO 2 se reglent toujours par-dessus
+        const float n2r = P.fmRatio > 0 ? n1 + 12.f * std::log2 (kFmRatios[std::min (17, P.fmRatio)]) + 12.f * (float) P.oct2 + P.tune2 + P.fine2 * 0.01f + P.fmFine * 0.5f + md[MdPitch2] * 12.f : n2 + P.fmFine * 0.5f;
         const float f1 = 440.f * std::pow (2.f, (n1 - 69.f) / 12.f), f2 = 440.f * std::pow (2.f, (n2r - 69.f) / 12.f);
         const float pw1 = std::min (0.95f, std::max (0.05f, P.pw1 + md[MdPw1] * 0.45f));
         const float pw2 = std::min (0.95f, std::max (0.05f, P.pw2 + md[MdPw2] * 0.45f));

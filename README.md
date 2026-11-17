@@ -95,6 +95,13 @@ Deux plugins, même design, même dépôt :
   - les 15 presets sur le filtre Prophet et les anciens projets gardent exactement leur son (réglage RES converti automatiquement).
 - Tests : `tools/tests/` : `midi_hydrasynth`, `midi_mpe`, `modes_matrice`, `reprise_midi_chord`, `fm_lineaire`, `stabilite_filtres`, `prophet6_resonance`.
 
+## v3b (corrections)
+- **FM** : avec un rapport FM (1:2, 2:1, 3:1...), OCTAVE, TUNE et FINE du VCO 2 se reglent toujours, par-dessus le rapport (avant, ils n'avaient plus d'effet). CHARACTER et DICE remettent le VCO 2 au neutre pour que leur rapport s'entende tel quel.
+- **Sequenceur sans arpegiateur** : TYPE = SEQ suffit, plus besoin d'allumer l'ARP (les touches transposent le motif ; LATCH reste disponible).
+- **Sequenceur en tempo** : changer de note ne relance plus l'horloge ; elle continue meme entre deux notes. Quand le DAW joue (cadence synchronisee), les pas sont cales sur sa mesure. Une touche a peine en retard (< 30 ms) fait quand meme partir le pas en cours ; apres une longue pause (un motif entier), le motif repart du debut.
+- Anciens projets : memes hauteurs et meme jeu (VCO 2 remis au neutre s'il etait desaccorde sans effet ; SEQ choisi avec ARP eteint -> type ARP).
+- Test : `tools/tests/seq_tempo_fm`.
+
 ## Compilation (GitHub Actions)
 Chaque push sur `main` lance le build Windows et publie `Zephyr-VST3-Windows.zip` dans la Release **latest** du dépôt.
 Dézipper et copier `Zephyr.vst3` et `Zephyr FX.vst3` dans `C:\Program Files\Common Files\VST3` (remplacer la v1 : mêmes identifiants, les projets se rouvrent).

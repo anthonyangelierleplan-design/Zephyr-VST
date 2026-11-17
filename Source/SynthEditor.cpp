@@ -793,6 +793,7 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
             if (id < 2) return;
             const auto& c = kCh[id - 2];
             auto S = [this] (const char* n, float v) { proc.setParamReal (n, v); };
+            S ("s_oct2", 2.f); S ("s_tune2", 0.f); S ("s_fine2", 0.f);                     // le rapport du caractere s'entend tel quel
             S ("s_fm", c.fm); S ("s_fmRatio", (float) c.ratio); S ("s_fmWave", (float) c.mwave); S ("s_fmDir", (float) c.dir);
             S ("s_fmEnvAmt", c.envAmt); S ("s_fmAtt", c.att); S ("s_fmDec", c.dec); S ("s_fmFine", c.fine); S ("s_fmVel", c.vel); S ("s_fmAT", c.at);
             S ("s_fmType", (float) c.type); S ("s_fmFb", c.fb); S ("s_fmKey", c.key);
@@ -810,6 +811,7 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
             const int ratioIdx = harmonic[rnd.nextInt ((int) (sizeof (harmonic) / sizeof (harmonic[0])))];
             const float dec = 0.1f + rnd.nextFloat() * 0.7f, sustained = rnd.nextFloat() < 0.25f ? 1.f : 0.f;
             auto S = [this] (const char* n, float v) { proc.setParamReal (n, v); };
+            S ("s_oct2", 2.f); S ("s_tune2", 0.f); S ("s_fine2", 0.f);
             S ("s_fmType", 1.f); S ("s_fmDir", 0.f); S ("s_fmWave", 1.f); S ("s_fmRatio", (float) ratioIdx);
             S ("s_fm", 0.12f + rnd.nextFloat() * 0.3f); S ("s_fmEnvAmt", sustained > 0.f ? rnd.nextFloat() * 0.3f : 0.3f + rnd.nextFloat() * 0.6f);
             S ("s_fmDec", dec); S ("s_fmAtt", sustained > 0.f ? rnd.nextFloat() * 0.5f : 0.f); S ("s_fmFb", rnd.nextFloat() < 0.4f ? rnd.nextFloat() * 0.35f : 0.f);

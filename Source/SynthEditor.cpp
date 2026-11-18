@@ -495,7 +495,7 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
             auto* t1 = tag (*u, "ON / LATCH"); auto* t4 = tag (*u, "TYPE  (SEQ = one stored note per step)");
             u->layoutFn = [=] (juce::Rectangle<int> r)
             {
-                const int w = r.getWidth(), kw = juce::jmin (112, (int) (w * 0.2f)), sw2 = juce::jmin (84, (int) (w * 0.15f));
+                const int w = r.getWidth(), kw = juce::jmin (112, (int) (w * 0.2f)), sw2 = juce::jmin (66, (int) (w * 0.115f));
                 dir->setBounds (r.getX(), r.getY(), kw, r.getHeight());          oct->setBounds (r.getX() + kw + 2, r.getY(), kw, r.getHeight());
                 const int sx = r.getX() + 2 * kw + 10;
                 tp->setBounds (sx, r.getY(), 2 * sw2, 10);
@@ -503,8 +503,8 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
                 const int rx = sx + 2 * sw2 + 12, rw = r.getRight() - rx, y = r.getY();
                 t1->setBounds (rx, y, 100, 10);                                  on->setBounds (rx, y + 12, rw, 34);
                 trip->setBounds (rx, y + 52, rw / 2 - 3, 32);                    tap->setBounds (rx + rw / 2 + 3, y + 52, rw - rw / 2 - 3, 32);
-                t4->setBounds (rx, y + 92, rw, 10);                              type->setBounds (rx, y + 104, rw / 2 - 3, 32);
-                free->setBounds (rx + rw / 2 + 3, y + 104, (rw - rw / 2 - 3) / 2 - 1, 32); thru->setBounds (rx + rw / 2 + 3 + (rw - rw / 2 - 3) / 2 + 1, y + 104, (rw - rw / 2 - 3) / 2 - 1, 32);
+                t4->setBounds (rx, y + 92, rw, 10);                              type->setBounds (rx, y + 104, rw * 2 / 5 - 2, 32);
+                free->setBounds (rx + rw * 2 / 5 + 2, y + 104, rw * 3 / 10 - 2, 32); thru->setBounds (rx + rw * 7 / 10 + 2, y + 104, rw - rw * 7 / 10 - 2, 32);
             };
         }
         {

@@ -589,6 +589,18 @@ void ZephyrAudioProcessor::resetMidiMap()
     for (int i = 0; i < kMaxMap; ++i) anchored[i] = caught[i] = false;
     learnIdx.store (-1); mapDirty.store (true);
 }
+void ZephyrAudioProcessor::applyControllerProfile (int c)
+{
+    controller.store (c);
+    if (c == 1)                                                     // Osmose CE : pas de potards, que du MPE (pression par note, CC74, bend par touche +/-48) + slider de modulation (CC1) et pedales
+    {
+        clearAllMidiAssign();                                       // la table du Hydrasynth ne sert a rien ici ; on apprend les pedales par clic droit > Assign MIDI
+        mpeOn.store (1); mpeBend.store (3);                         // MPE, canal 1 maitre, bend par note +/-48 (valeur d'origine de l'Osmose)
+        takeoverMode.store (2);                                     // slider / pedales : positions absolues, pas de repere visuel -> reprise directe
+    }
+    else resetMidiMap();                                            // Hydrasynth : table d'origine
+    mapDirty.store (true);
+}
 void ZephyrAudioProcessor::clearAllMidiAssign()
 {
     for (int i = 0; i < mapIds.size(); ++i) mapCc[(size_t) i].store (-1);
@@ -619,7 +631,7 @@ float ZephyrAudioProcessor::atShape (float x) const
 juce::String ZephyrAudioProcessor::midiMapToString() const
 {
     juce::String s ("M" + juce::String (takeoverMode.load()));
-    s << ";Q" << quality.load() << ";S" << ccSmooth.load() << ";AC" << atCurve.load() << ";AS" << atSpeed.load() << ";XM" << mpeOn.load() << ";XB" << mpeBend.load() << ";VP" << vcoPhase.load() << ";VM" << vcoModel.load();
+    s << ";Q" << quality.load() << ";S" << ccSmooth.load() << ";AC" << atCurve.load() << ";AS" << atSpeed.load() << ";XC" << controller.load() << ";XM" << mpeOn.load() << ";XB" << mpeBend.load() << ";VP" << vcoPhase.load() << ";VM" << vcoModel.load();
     for (int i = 0; i < mapIds.size(); ++i)
     {
         const int cc = mapCc[(size_t) i].load();
@@ -639,6 +651,7 @@ void ZephyrAudioProcessor::midiMapFromString (const juce::String& str)
             if (tok.startsWith ("VP")) vcoPhase.store (juce::jlimit (0, 1, tok.substring (2).getIntValue()));
             else if (tok.startsWith ("VM")) vcoModel.store (juce::jlimit (0, 1, tok.substring (2).getIntValue()));
             else if (tok.startsWith ("XM")) mpeOn.store (juce::jlimit (0, 1, tok.substring (2).getIntValue()));
+            else if (tok.startsWith ("XC")) controller.store (juce::jlimit (0, 1, tok.substring (2).getIntValue()));
             else if (tok.startsWith ("XB")) mpeBend.store (juce::jlimit (0, 3, tok.substring (2).getIntValue()));
             else if (tok.startsWith ("AC")) atCurve.store (juce::jlimit (0, 3, tok.substring (2).getIntValue()));
             else if (tok.startsWith ("AS")) atSpeed.store (juce::jlimit (0, 5, tok.substring (2).getIntValue()));

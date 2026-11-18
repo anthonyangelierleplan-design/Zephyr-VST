@@ -91,6 +91,8 @@ public:
     void clearMidiAssign (const juce::String& id);
     void defaultMidiAssign (const juce::String& id);          // CC d'origine (macros : 16..23), sinon rien
     int  defaultCcOf (const juce::String& id) const;          // -1 si pas de CC d'origine
+    std::atomic<int> controller { 0 };                         // controleur utilise : 0 Hydrasynth, 1 Osmose CE (reglage global)
+    void applyControllerProfile (int c);                       // applique le profil (table MIDI, MPE, reprise)
     void resetMidiMap();                                      // table d'origine (Hydrasynth)
     void clearAllMidiAssign();                                // aucune assignation : le plugin s'utilise avec n'importe quel controleur (apprentissage MIDI)
     juce::String midiMapToString() const;

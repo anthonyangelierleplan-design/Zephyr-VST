@@ -120,3 +120,6 @@ Deux plugins, même design, même dépôt :
 ## Compilation (GitHub Actions)
 Chaque push sur `main` lance le build Windows et publie `Zephyr-VST3-Windows.zip` dans la Release **latest** du dépôt.
 Dézipper et copier `Zephyr.vst3` et `Zephyr FX.vst3` dans `C:\Program Files\Common Files\VST3` (remplacer la v1 : mêmes identifiants, les projets se rouvrent).
+
+## Profil de contrôleur (Hydrasynth / Osmose CE)
+- **SETTINGS → CONTROLLER** : *Hydrasynth* (table MIDI d'origine) ou *Osmose CE*. Le profil Osmose active le MPE (canal 1 maître), règle le bend par note sur ±48, vide la table MIDI (l'Osmose n'a pas de potards) et passe la reprise en DIRECT. Le slider de modulation (CC1) pilote la molette ; pression par note, CC74 et bend par touche passent par le MPE. Pédales : clic droit sur un potard > Assign MIDI. Choix sauvé avec les réglages globaux ; « RESTORE HYDRASYNTH MAP » revient au profil Hydrasynth.

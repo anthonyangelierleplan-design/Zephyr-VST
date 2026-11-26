@@ -161,3 +161,12 @@ Table de données (tools/presets/presets.py) → code C++ → banc de test qui j
 - Reverb (Dattorro) : la lecture lineaire des lignes assombrissait la queue en boucle ; en Hermite il faut dampHz x0,73 + passe-bas 8 kHz en sortie pour garder la couleur.
 - Surechantillonneur x4 : elliptique normalise (ordre 9 a 2x, ordre 5 a 4x, -95 dB). Un ecretage tres dur sur fondamentale aigue replie quand meme (harmoniques > 100 kHz) : ADAA necessaire pour aller plus loin.
 
+## v4 : port d'Orage v23 (cassette, CHORD, vitesse par pas)
+- Le patch d'Orage ne s'applique pas tel quel (Zephyr a diverge) : port a la main ; `struct Tape` copiee telle quelle d'Orage.
+- Nouveau noeud NTape insere avant NOut ; patch "z3:". Relecture : z2 = 12 noeuds, z1 = 11 noeuds ; le dernier noeud d'un ancien patch -> NOut, masque des sources `(1u<<NOut)-1u`. kMaxRack reste 11.
+- A zero, la cassette ne lit pas sa ligne a retard (sinon dephasage avec le signal sec). Compensation de la saturation : 1 + 0,8 x SATURATE. pruneRack retire la cassette si MIX ~ 0 ou tous les reglages ~ 0.
+- CHORD : le tableau des notes qui sonnent est remplace a chaque pas, toutes les notes du pas s'eteignent avant le suivant ; emises avec slot -1 (pas d'allocation VCO par pas comme le POLY de Zephyr). Branche placee avant le POLY `planned`.
+- Vitesse par pas : increment de phase = base x vitesse / (1 +- swing) ; au changement de pas on convertit la phase restante. Calage DAW : position = somme des durees de pas sur un cycle (x2 si longueur impaire, a cause du swing) -> posOf / locate.
+- Vitesse sauvee comme 5e champ ":" du pas (anciens projets : x1).
+- Potards crantes (<= 8 crans) : la taille du potard tient compte du plus long libelle lateral ; libelles decales de la moitie de leur largeur.
+- Presets cassette : niveaux mesures avec tools (accord tenu, RMS / crete) et cales sur leur categorie.

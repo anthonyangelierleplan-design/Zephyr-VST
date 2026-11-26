@@ -97,9 +97,11 @@ public:
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     void randomize();
     void clear();
+    void setSpeedRow (bool s) { speedRow = s; repaint(); }       // rangee du bas : false = RATCHET, true = STEP SPEED (v4)
 private:
     void timerCallback() override;
     void apply (const juce::MouseEvent&, bool first);
+    bool speedRow = false;
     ZephyrAudioProcessor& proc;
     int shown = -2, paintState = 1, recSig = -1;
     bool ratchetRow = false;

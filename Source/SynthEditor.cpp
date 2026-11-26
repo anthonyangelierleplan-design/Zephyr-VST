@@ -148,8 +148,21 @@ juce::String noteName (int n)
 }
 }
 
+// vitesses dans l'ordre musical (pour la molette) : x1/2, x1, x3/2, x2, x4
+static const int kSpeedOrder[zephyr::kNumSpeeds] { 3, 0, 4, 1, 2 };
+static int speedRank (int code) { for (int i = 0; i < zephyr::kNumSpeeds; ++i) if (kSpeedOrder[i] == code) return i; return 1; }
+static juce::String speedText (int code) { return juce::String::fromUTF8 (code == 3 ? "\xc3\x97\xc2\xbd" : code == 4 ? "\xc3\x97" "3/2" : code == 1 ? "\xc3\x97" "2" : code == 2 ? "\xc3\x97" "4" : "\xc3\x97" "1"); }
+
 void StepGrid::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
 {
+    if (speedRow && (float) e.y > (float) getHeight() * 0.64f)                  // rangee STEP SPEED : la molette passe d'une vitesse a l'autre
+    {
+        const int k = juce::jlimit (0, 15, (int) ((float) e.x / ((float) getWidth() / 16.f)));
+        const int r = juce::jlimit (0, zephyr::kNumSpeeds - 1, speedRank (proc.arpPat.speed[k].load()) + (w.deltaY > 0 ? 1 : -1));
+        proc.arpPat.speed[k] = kSpeedOrder[r];
+        repaint();
+        return;
+    }
     if (paramInt (proc.apvts, "s_arpType") != 1 || (float) e.y > (float) getHeight() * 0.64f) return;
     const int k = juce::jlimit (0, 15, (int) ((float) e.x / ((float) getWidth() / 16.f)));
     const int d = (w.deltaY > 0 ? 1 : -1) * (e.mods.isShiftDown() ? 12 : 1);
@@ -186,15 +199,29 @@ void StepGrid::paint (juce::Graphics& g)
             g.drawText (noteName (proc.arpPat.seqNote[k].load()), cell.toNearestInt().withTrimmedBottom (10), juce::Justification::centred, false);
             if (proc.arpPat.tie[k].load() != 0) { g.setColour (juce::Colours::black.withAlpha (0.8f * dim)); g.fillRoundedRectangle (cell.getRight() - 9.f, cell.getCentreY() - 3.f, 12.f, 6.f, 2.f); }
         }
-        // ratchet : 1 a 4 petits points
+        const int spd = proc.arpPat.speed[k].load();
+        if (spd != 0 && ! speedRow)                                                 // pas a vitesse propre : petit badge en haut de la case (visible aussi en vue RATCHET)
+        {
+            auto bd = juce::Rectangle<float> (cell.getRight() - 25.f, cell.getY() + 3.f, 22.f, 11.f);
+            g.setColour (juce::Colours::black.withAlpha (0.7f * dim)); g.fillRoundedRectangle (bd, 3.f);
+            g.setColour (ledCol().brighter (0.4f).withAlpha (dim)); g.setFont (bold (8.5f));
+            g.drawText (speedText (spd), bd.toNearestInt(), juce::Justification::centred, false);
+        }
         auto rc = juce::Rectangle<float> ((float) k * cw + 2.f, mainH + 2.f, cw - 4.f, (float) getHeight() - mainH - 4.f);
         drawWell (g, rc);
-        for (int d = 0; d < 4; ++d)
+        if (speedRow)                                                               // vitesse du pas : x1/2, x1, x3/2, x2, x4
         {
-            const float px = rc.getX() + rc.getWidth() * (0.2f + 0.2f * (float) d), py = rc.getCentreY();
-            g.setColour (d < rt && st > 0 ? ledCol().withAlpha (dim) : look::print.withAlpha (0.12f * dim));
-            g.fillEllipse (px - 3.f, py - 3.f, 6.f, 6.f);
+            g.setColour (spd != 0 ? ledCol().brighter (0.3f).withAlpha (dim) : look::print.withAlpha (0.28f * dim));
+            g.setFont (bold (spd != 0 ? 12.f : 10.f));
+            g.drawText (speedText (spd), rc.toNearestInt(), juce::Justification::centred, false);
         }
+        else                                                                        // ratchet : 1 a 4 petits points
+            for (int d = 0; d < 4; ++d)
+            {
+                const float px = rc.getX() + rc.getWidth() * (0.2f + 0.2f * (float) d), py = rc.getCentreY();
+                g.setColour (d < rt && st > 0 ? ledCol().withAlpha (dim) : look::print.withAlpha (0.12f * dim));
+                g.fillEllipse (px - 3.f, py - 3.f, 6.f, 6.f);
+            }
         if (k == cur) { g.setColour (juce::Colours::white.withAlpha (0.85f)); g.drawRoundedRectangle (juce::Rectangle<float> ((float) k * cw + 1.f, 1.f, cw - 2.f, (float) getHeight() - 2.f), 3.f, 1.6f); }
         if (recOn && k == recAt) { g.setColour (juce::Colour (0xffff4a3a)); g.drawRoundedRectangle (juce::Rectangle<float> ((float) k * cw + 1.f, 1.f, cw - 2.f, (float) getHeight() - 2.f), 3.f, 2.4f); }
     }
@@ -205,7 +232,12 @@ void StepGrid::apply (const juce::MouseEvent& e, bool first)
     const float cw = (float) getWidth() / 16.f, mainH = (float) getHeight() * 0.64f;
     const int k = juce::jlimit (0, 15, (int) ((float) e.x / cw));
     if (first) ratchetRow = (float) e.y > mainH;
-    if (ratchetRow)
+    if (ratchetRow && speedRow)                                                     // clic : vitesse suivante (x1 > x2 > x4 > x1/2 > x3/2), clic droit : x1 ; glisser = meme vitesse sur les pas voisins
+    {
+        if (first) { const int sp = proc.arpPat.speed[k].load(); paintState = e.mods.isPopupMenu() ? 0 : (sp + 1) % zephyr::kNumSpeeds; }
+        proc.arpPat.speed[k] = paintState;
+    }
+    else if (ratchetRow)
     {
         if (first) { const int r = proc.arpPat.ratchet[k].load(); paintState = e.mods.isPopupMenu() ? 1 : (r % 4) + 1; }
         proc.arpPat.ratchet[k] = paintState;
@@ -231,7 +263,7 @@ void StepGrid::randomize()
     }
     repaint();
 }
-void StepGrid::clear() { for (int k = 0; k < 16; ++k) { proc.arpPat.step[k] = 1; proc.arpPat.ratchet[k] = 1; } repaint(); }
+void StepGrid::clear() { for (int k = 0; k < 16; ++k) { proc.arpPat.step[k] = 1; proc.arpPat.ratchet[k] = 1; proc.arpPat.speed[k] = 0; } repaint(); }
 
 LaneEditor::LaneEditor (ZephyrAudioProcessor& p, int l) : proc (p), lane (l) { startTimerHz (20); }
 
@@ -486,7 +518,7 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
                 if (auto* sy = proc.apvts.getParameter ("s_arpSync")) sy->setValueNotifyingHost (0.f);
                 if (auto* rt = proc.apvts.getParameter ("s_arpRate")) rt->setValueNotifyingHost ((float) (std::log (hz / 0.5) / std::log (40.0)));
             });
-            auto* dir = knob (*u, "s_arpMode", "MODE");  dir->setChoices ({ "UP", "DOWN", "UP-DN", "PLAYED", "RANDOM", "CONVRG" });
+            auto* dir = knob (*u, "s_arpMode", "MODE");  dir->setChoices ({ "UP", "DOWN", "UP-DN", "PLAYED", "RANDOM", "CONVRG", "CHORD" });
             auto* oct = knob (*u, "s_arpOct", "OCTAVE"); oct->setChoices ({ "1", "2", "3", "4" });
             auto* free = toggle (*u, "s_arpFree", "FREE");
             auto* shift = knob (*u, "s_arpShift", "SHIFT"); auto* clus = knob (*u, "s_arpCluster", "CLUSTER");     // mode POLY (rotation sur 4 VCO) : decalages
@@ -496,7 +528,8 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
             u->layoutFn = [=] (juce::Rectangle<int> r)
             {
                 const int w = r.getWidth(), kw = juce::jmin (112, (int) (w * 0.2f)), sw2 = juce::jmin (84, (int) (w * 0.15f));
-                dir->setBounds (r.getX(), r.getY(), kw, r.getHeight());          oct->setBounds (r.getX() + kw + 2, r.getY(), kw, r.getHeight());
+                const int dw = kw + 34;                                         // MODE (7 crans nommes) plus large qu'OCTAVE : ses libelles lateraux ont la place
+                dir->setBounds (r.getX() - 4, r.getY(), dw, r.getHeight());      oct->setBounds (r.getX() + dw - 2, r.getY(), 2 * kw + 6 - dw, r.getHeight());
                 const int sx = r.getX() + 2 * kw + 10;
                 tp->setBounds (sx, r.getY(), 2 * sw2, 10);
                 shift->setBounds (sx, r.getY() + 12, sw2, r.getHeight() - 12); clus->setBounds (sx + sw2, r.getY() + 12, sw2, r.getHeight() - 12);
@@ -522,7 +555,7 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
         }
         // ---- rang 2 : pas des notes
         {
-            auto* u = unit ("NOTE STEPS  (click : rest / note / accent  -  lower row : ratchet)");
+            auto* u = unit ("NOTE STEPS  (click : rest / note / accent  -  lower row : ratchet or step speed)");
             auto* len = combo (*u, "s_arpLen");
             auto* grid = new StepGrid (proc); { std::unique_ptr<juce::Component> o (grid); u->addAndMakeVisible (*grid); owned.push_back (std::move (o)); }
             auto* rnd = button (*u, "RANDOM", [grid] { grid->randomize(); }); auto* clr = button (*u, "CLEAR", [grid] { grid->clear(); });
@@ -532,6 +565,11 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
             auto* tie = button (*u, "TIE", [this, stepLen, grid] { const int p = (proc.arpPat.recPos.load() + stepLen() - 1) % stepLen(); proc.arpPat.tie[p] = 1 - proc.arpPat.tie[p].load(); grid->repaint(); });
             auto* back = button (*u, "BACK", [this, stepLen, grid] { proc.arpPat.recPos = (proc.arpPat.recPos.load() + stepLen() - 1) % stepLen(); grid->repaint(); });
             auto* t1 = tag (*u, "PATTERN LENGTH"); auto* t3 = tag (*u, "STEP RECORD  (type SEQ)");
+            auto* rowR = button (*u, "RATCHET", nullptr); auto* rowS = button (*u, "STEP SPEED", nullptr);       // rangee du bas : ratchet ou vitesse du pas
+            for (auto* b : { rowR, rowS }) { b->setClickingTogglesState (true); b->setRadioGroupId (4712); }
+            rowR->setToggleState (true, juce::dontSendNotification);
+            rowR->onClick = [grid] { grid->setSpeedRow (false); };
+            rowS->onClick = [grid] { grid->setSpeedRow (true); };
             auto* t2 = tag (*u, "SEQ : REC, then play keys - one step per note. Wheel on a step = pitch.", juce::Justification::topLeft, 9.f);
             u->layoutFn = [=] (juce::Rectangle<int> r)
             {
@@ -542,6 +580,7 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
                 tie->setBounds (r.getX() + 164, r.getY() + 46, 74, 22); back->setBounds (r.getX() + 244, r.getY() + 46, 70, 22);
                 t2->setBounds (r.getX(), r.getY() + 74, 316, 22);
                 grid->setBounds (r.getX() + 330, r.getY(), r.getWidth() - 330, r.getHeight());
+                rowR->setBounds (r.getRight() - 186, r.getY() - 25, 80, 18); rowS->setBounds (r.getRight() - 102, r.getY() - 25, 96, 18);
             };
         }
         // ---- rang 3 : pistes de modulation

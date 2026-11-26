@@ -92,6 +92,14 @@ const PDef kDefs[] = {
     { "lfo2Dst",   "LFO2 Destination", 0,  15,  0,    kChoice, kModDstChoices },
     { "shDst",     "S&H Destination",  0,  15,  0,    kChoice, kModDstChoices },
     { "envDst",    "Env Destination",  0,  15,  0,    kChoice, kModDstChoices },
+    // v4 : module CASSETTE (repris d'Orage v23) - toujours ajouter a la fin
+    { "tapeWow",   "Cassette Wow",     0,   1,  0,    kFloat,  nullptr },
+    { "tapeFlutter","Cassette Flutter",0,   1,  0,    kFloat,  nullptr },
+    { "tapeSat",   "Cassette Saturate",0,   1,  0,    kFloat,  nullptr },
+    { "tapeAge",   "Cassette Age",     0,   1,  0,    kFloat,  nullptr },
+    { "tapeHiss",  "Cassette Hiss",    0,   1,  0,    kFloat,  nullptr },
+    { "tapeCrunch","Cassette Crunch",  0,   1,  0,    kFloat,  nullptr },
+    { "tapeMix",   "Cassette Mix",     0,   1,  1,    kFloat,  nullptr },
 };
 constexpr int kNumDefs = (int) (sizeof (kDefs) / sizeof (kDefs[0]));
 
@@ -147,7 +155,7 @@ const std::vector<SynDef>& synDefs()
         }
         F ("s_fold", "Wavefolder", 0, 1, 0);  F ("s_foldSym", "Fold Symmetry", -1, 1, 0);
         C ("s_arpOn", "Arp", "Off|On|Latch", 0);
-        C ("s_arpMode", "Arp Direction", "Up|Down|Up-Down|Played|Random|Converge", 0);
+        C ("s_arpMode", "Arp Direction", "Up|Down|Up-Down|Played|Random|Converge|Chord", 0);   // Chord (v4) : ajoute a la fin
         C ("s_arpOct", "Arp Range", "1 Oct|2 Oct|3 Oct|4 Oct", 0);
         C ("s_ftype", "Filter Type", "MS-10 (circuit)|Ladder CEM3320 (circuit)|SEM (circuit)|Prophet SSM2040 (circuit)", 2);  F ("s_semMorph", "SEM Morph", 0, 1, 0);
         C ("s_assign", "Key Assign", "Poly|Mono|Unison|Share|Chord", 0);  B ("s_hold", "Hold", false);
@@ -473,6 +481,82 @@ void xHaloChoir (ZephyrAudioProcessor& p)
     M (p, 1, MsLfo1, MdMorph, 0.5f); M (p, 2, MsPolyAT, MdLpf, 0.3f);
 }
 
+// ---- v4 : presets "cassette" (repris d'Orage v23, refaits pour le son de Zephyr : nappes larges, ensemble, chatoiement)
+// motif de pas : '0' silence, '1' note, '2' accent ; vitesses : '0' x1, '1' x2, '2' x4, '3' x1/2, '4' x3/2 (codes zephyr::speedMul)
+void setSteps (ZephyrAudioProcessor& p, const char* st) { for (int i = 0; i < zephyr::kArpSteps && st[i] != 0; ++i) { p.arpPat.step[i] = st[i] - '0'; p.arpPat.ratchet[i] = 1; } }
+void setSpeeds (ZephyrAudioProcessor& p, const char* sp) { for (int i = 0; i < zephyr::kArpSteps; ++i) p.arpPat.speed[i] = sp[i] != 0 ? juce::jlimit (0, zephyr::kNumSpeeds - 1, sp[i] - '0') : 0; }
+void setSeq (ZephyrAudioProcessor& p, std::initializer_list<int> notes) { int i = 0; for (int n : notes) if (i < zephyr::kArpSteps) p.arpPat.seqNote[i++] = n; }
+void cFadedPolaroid (ZephyrAudioProcessor& p)
+{
+    S (p, { {"output",-9},{"s_wave1",0},{"s_wave2",0},{"s_fine2",7},{"s_lvl1",0.6f},{"s_lvl2",0.55f},{"s_ftype",0},{"s_lpf",0.52f},{"s_lpfRes",0.18f},{"s_fltEnv",0.1f},
+            {"s_aA",0.62f},{"s_aD",0.6f},{"s_aS",0.9f},{"s_aR",0.8f},{"s_drift",0.35f},{"s_l1Rate",0.1f},
+            {"ensMix",0.4f},{"revMix",0.35f},{"revDecay",0.75f},{"revSize",0.7f},{"revShimmer",0.15f},
+            {"tapeWow",0.55f},{"tapeFlutter",0.2f},{"tapeSat",0.3f},{"tapeAge",0.45f},{"tapeHiss",0.18f} });
+    M (p, 1, MsLfo1, MdLpf, 0.08f); M (p, 2, MsPolyAT, MdLpf, 0.3f);
+}
+void cWornSolina (ZephyrAudioProcessor& p)
+{
+    S (p, { {"output",-8},{"s_wave1",0},{"s_wave2",0},{"s_oct2",3},{"s_fine2",9},{"s_lvl2",0.45f},{"s_ftype",0},{"s_lpf",0.6f},{"s_lpfRes",0.1f},{"s_fltEnv",0.05f},
+            {"s_aA",0.5f},{"s_aS",1.f},{"s_aR",0.7f},{"s_drift",0.3f},
+            {"ensMix",0.75f},{"ensDepth",0.7f},{"ensSpeed",0.45f},{"revMix",0.35f},{"revDecay",0.7f},
+            {"tapeWow",0.45f},{"tapeFlutter",0.3f},{"tapeSat",0.25f},{"tapeAge",0.55f},{"tapeHiss",0.15f} });
+    M (p, 1, MsPolyAT, MdLpf, 0.3f);
+}
+void cFilmstripKeys (ZephyrAudioProcessor& p)
+{
+    S (p, { {"output",2},{"s_wave1",2},{"s_wave2",2},{"s_fm",0.3f},{"s_fmRatio",3},{"s_lvl1",0.7f},{"s_fmDec",0.35f},{"s_fmEnvAmt",0.45f},{"s_ftype",2},{"s_lpf",0.62f},{"s_lpfRes",0.08f},
+            {"s_aD",0.55f},{"s_aS",0.25f},{"s_aR",0.35f},{"ensMix",0.25f},{"dlyMode",0},{"dlyMix",0.15f},{"dlySync",14},{"dlyFb",0.3f},{"revMix",0.25f},{"revDecay",0.6f},
+            {"tapeWow",0.4f},{"tapeFlutter",0.25f},{"tapeSat",0.25f},{"tapeAge",0.5f},{"tapeHiss",0.12f},{"tapeCrunch",0.35f} });
+    M (p, 1, MsVel, MdFm, 0.2f);
+}
+void cLullabySine (ZephyrAudioProcessor& p)
+{
+    S (p, { {"output",-7},{"s_wave1",2},{"s_wave2",3},{"s_oct2",3},{"s_lvl1",0.8f},{"s_lvl2",0.18f},{"s_ftype",0},{"s_lpf",0.8f},{"s_lpfRes",0.05f},{"s_glide",0.12f},{"s_assign",1},
+            {"s_aA",0.2f},{"s_aS",0.95f},{"s_aR",0.45f},{"s_vib",0.08f},{"dlyMode",0},{"dlyMix",0.2f},{"dlySync",13},{"dlyFb",0.35f},{"dlyTone",0.35f},{"revMix",0.3f},{"revDecay",0.7f},{"revShimmer",0.2f},
+            {"tapeWow",0.7f},{"tapeFlutter",0.3f},{"tapeSat",0.2f},{"tapeAge",0.4f},{"tapeHiss",0.1f} });
+}
+void cVhsBass (ZephyrAudioProcessor& p)
+{
+    S (p, { {"output",-3},{"s_wave1",0},{"s_oct1",1},{"s_wave2",1},{"s_oct2",1},{"s_lvl2",0.45f},{"s_fine2",6},{"s_sub",0.3f},{"s_ftype",1},{"s_lpf",0.34f},{"s_lpfRes",0.3f},{"s_fltEnv",0.35f},
+            {"s_fD",0.3f},{"s_fS",0.3f},{"s_assign",1},{"s_glide",0.05f},{"s_aS",0.9f},{"s_aR",0.15f},
+            {"tapeWow",0.18f},{"tapeFlutter",0.1f},{"tapeSat",0.55f},{"tapeAge",0.35f},{"tapeHiss",0.06f} });
+}
+void cChordPulse (ZephyrAudioProcessor& p)
+{
+    // accord rejoue en rythme (direction CHORD) : tenir un accord, les accents et les silences font le groove
+    S (p, { {"output",-11},{"s_wave1",1},{"s_pw1",0.35f},{"s_wave2",0},{"s_lvl2",0.5f},{"s_fine2",8},{"s_ftype",2},{"s_lpf",0.5f},{"s_lpfRes",0.2f},{"s_fltEnv",0.35f},{"s_fD",0.22f},{"s_fS",0.1f},
+            {"s_aD",0.3f},{"s_aS",0.2f},{"s_aR",0.15f},{"s_arpOn",1},{"s_arpMode",6},{"s_arpOct",0},{"s_arpSync",7},{"s_arpGate",0.55f},{"s_arpLen",15},
+            {"ensMix",0.3f},{"dlyMode",2},{"dlyMix",0.18f},{"dlySync",14},{"dlyFb",0.3f},{"revMix",0.2f},
+            {"tapeWow",0.15f},{"tapeFlutter",0.1f},{"tapeSat",0.3f},{"tapeAge",0.2f} });
+    setSteps (p, "2011201020112110");
+    M (p, 1, MsVel, MdFltEnv, 0.2f);
+}
+void cHalfSpeedMemory (ZephyrAudioProcessor& p)
+{
+    // sequence dont certains pas vont deux fois plus vite (x2) ou deux fois plus lentement (x1/2) : le motif "boite" comme une vieille bande
+    S (p, { {"output",-8},{"s_wave1",2},{"s_wave2",1},{"s_oct2",3},{"s_lvl1",0.75f},{"s_lvl2",0.2f},{"s_pw2",0.3f},{"s_ftype",2},{"s_lpf",0.6f},{"s_lpfRes",0.15f},{"s_fltEnv",0.3f},{"s_fD",0.3f},{"s_fS",0.f},
+            {"s_aD",0.4f},{"s_aS",0.f},{"s_aR",0.35f},{"s_arpOn",1},{"s_arpType",1},{"s_arpSync",7},{"s_arpGate",0.5f},{"s_arpLen",15},
+            {"dlyMode",1},{"dlyMix",0.25f},{"dlySync",14},{"dlyFb",0.35f},{"revMix",0.3f},{"revDecay",0.7f},{"revShimmer",0.2f},
+            {"tapeWow",0.5f},{"tapeFlutter",0.25f},{"tapeSat",0.2f},{"tapeAge",0.5f},{"tapeHiss",0.12f},{"tapeCrunch",0.25f} });
+    setSteps (p, "2111211121102111");
+    setSeq (p, { 60, 67, 64, 71, 69, 67, 64, 62, 60, 67, 72, 71, 69, 67, 64, 67 });
+    setSpeeds (p, "0011000000110003");
+}
+void cRainyProjector (ZephyrAudioProcessor& p)
+{
+    S (p, { {"output",-9},{"s_wave1",2},{"s_wave2",0},{"s_oct2",1},{"s_tune2",7},{"s_lvl1",0.6f},{"s_lvl2",0.3f},{"s_noise",0.15f},{"s_ftype",0},{"s_lpf",0.45f},{"s_lpfRes",0.3f},
+            {"s_aA",0.75f},{"s_aS",0.9f},{"s_aR",0.85f},{"s_l1Rate",0.08f},{"s_drift",0.4f},
+            {"ensMix",0.3f},{"revMix",0.5f},{"revDecay",0.88f},{"revSize",0.85f},{"revDamp",0.6f},{"revShimmer",0.3f},
+            {"tapeWow",0.8f},{"tapeFlutter",0.5f},{"tapeSat",0.35f},{"tapeAge",0.7f},{"tapeHiss",0.45f},{"tapeCrunch",0.2f} });
+    M (p, 1, MsLfo1, MdLpf, 0.15f);
+}
+#endif
+void fCassette (ZephyrAudioProcessor& p)
+{
+    S (p, { {"ensMix",0.2f},{"tapeWow",0.5f},{"tapeFlutter",0.25f},{"tapeSat",0.35f},{"tapeAge",0.5f},{"tapeHiss",0.15f},{"tapeCrunch",0.1f},{"tapeMix",1.f} });
+}
+#if ZEPHYR_SYNTH
+
 // ---- selection de macros preparee par categorie (slots 5..12 = macros 1..8). Les macros demarrent a 0 : le son du preset ne change pas tant qu'on n'y touche pas.
 struct MacroDef { int dst; float amt; };
 void applyMacroSet (ZephyrAudioProcessor& p, const juce::String& cat)
@@ -503,9 +587,13 @@ const Factory kFactory[] = {
     { "Satin Bass", "Bass", bSatin }, { "Moon Ladder", "Bass", bMoon }, { "Deep Prophet", "Bass", bDeepProphet }, { "Round Sub", "Bass", bRoundSub },
     { "Starlight Arp", "Arp / Seq", aStarlight }, { "Crystal Cascade", "Arp / Seq", aCrystalCascade }, { "Prism Sequence", "Arp / Seq", aPrismSeq }, { "Monopoly Lights", "Arp / Seq", aMonopolyLights },
     { "Ice Crystals", "Texture", xIceCrystals }, { "Solar Wind", "Texture", xSolarWind }, { "Frozen Time", "Texture", xFrozenTime }, { "Gossamer", "Texture", xGossamer }, { "Halo Choir", "Texture", xHaloChoir },
+    // v4 : cassette
+    { "Faded Polaroid", "Pad", cFadedPolaroid }, { "Worn Solina", "Strings", cWornSolina }, { "Filmstrip Keys", "Keys / Bells", cFilmstripKeys }, { "Lullaby Sine", "Brass / Lead", cLullabySine },
+    { "VHS Bass", "Bass", cVhsBass }, { "Chord Pulse 82", "Arp / Seq", cChordPulse }, { "Half-Speed Memory", "Arp / Seq", cHalfSpeedMemory }, { "Rainy Projector", "Texture", cRainyProjector },
 #endif
     { "String Machine", "Rack FX", fStringMachine }, { "Tape Echo Gold", "Rack FX", fTapeGold }, { "Ice Hall", "Rack FX", fIceHall },
     { "Wide & Bright", "Rack FX", fWideBright }, { "Phase Shimmer", "Rack FX", fPhaseShimmer }, { "Opto Glow", "Rack FX", fOptoGlow },
+    { "Cassette Memories", "Rack FX", fCassette },
 };
 constexpr int kNumFactory = (int) (sizeof (kFactory) / sizeof (kFactory[0]));
 }
@@ -707,6 +795,7 @@ zephyr::Params ZephyrAudioProcessor::readParams() const
     p.stutOn = b();  p.stutMode = n();  p.stutDiv = n();  p.stutFeel = n();  p.stutLen = f();  p.stutDecay = f();  p.stutPitch = f();  p.stutMix = f();
     p.spaceMode = n();
     i += 4;                                                                 // destinations des sources : appliquees dans applyModRoutes()
+    p.tapeWow = f();  p.tapeFlutter = f();  p.tapeSat = f();  p.tapeAge = f();  p.tapeHiss = f();  p.tapeCrunch = f();  p.tapeMix = f();
     jassert (i == kNumDefs);
     return p;
 }
@@ -1065,7 +1154,7 @@ juce::ValueTree ZephyrAudioProcessor::captureState()
 #if ZEPHYR_SYNTH
     {
         juce::String c;
-        for (int k = 0; k < zephyr::kArpSteps; ++k) c << arpPat.step[k].load() << ":" << arpPat.ratchet[k].load() << ":" << arpPat.seqNote[k].load() << ":" << arpPat.tie[k].load() << ",";
+        for (int k = 0; k < zephyr::kArpSteps; ++k) c << arpPat.step[k].load() << ":" << arpPat.ratchet[k].load() << ":" << arpPat.seqNote[k].load() << ":" << arpPat.tie[k].load() << ":" << arpPat.speed[k].load() << ",";   // 5e champ : vitesse du pas (v4)
         for (int l = 0; l < zephyr::kArpLanes; ++l) { c << "|"; for (int k = 0; k < zephyr::kArpSteps; ++k) c << juce::String (arpPat.lane[l][k].load(), 3) << ","; }
         state.setProperty ("arpPat", c, nullptr);
     }
@@ -1113,6 +1202,7 @@ void ZephyrAudioProcessor::applyState (juce::ValueTree state)
                 juce::StringArray f; f.addTokens (t[k], ":", "");
                 arpPat.step[k] = juce::jlimit (0, 2, f[0].getIntValue()); arpPat.ratchet[k] = juce::jlimit (1, 4, f[1].getIntValue());
                 arpPat.seqNote[k] = f.size() > 2 ? juce::jlimit (0, 127, f[2].getIntValue()) : 60; arpPat.tie[k] = f.size() > 3 ? juce::jlimit (0, 1, f[3].getIntValue()) : 0;
+                arpPat.speed[k] = f.size() > 4 ? juce::jlimit (0, zephyr::kNumSpeeds - 1, f[4].getIntValue()) : 0;
             }
             for (int l = 0; l < zephyr::kArpLanes && l + 1 < parts.size(); ++l)
             {
@@ -1356,8 +1446,9 @@ void ZephyrAudioProcessor::pruneRack()
     if (nz (v ("dlyMix"))) used.insert (NDelay);
     if (nz (v ("revMix"))) used.insert (NVerb);
     if (nz (v ("wideWidth")) || nz (v ("wideSpread")) || nz (v ("wideBass"))) used.insert (NWide);
+    if (v ("tapeMix") > 0.003f && v ("tapeWow") + v ("tapeFlutter") + v ("tapeSat") + v ("tapeAge") + v ("tapeHiss") + v ("tapeCrunch") > 0.003f) used.insert (NTape);
     std::vector<int> r;
-    for (int nd : { NSat, NColor, NFilter, NComp, NPhaser, NEnsemble, NStut, NDelay, NVerb, NWide }) if (used.count (nd)) r.push_back (nd);
+    for (int nd : { NSat, NColor, NFilter, NComp, NPhaser, NEnsemble, NStut, NDelay, NVerb, NTape, NWide }) if (used.count (nd)) r.push_back (nd);
     engine.setRack (r);
 #endif
 }

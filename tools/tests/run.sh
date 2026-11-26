@@ -14,7 +14,7 @@ for f in *.cpp; do
     if ! "$CXX" -O2 -std=c++17 -I../../Source "$f" -o "$out/$n" 2> "$out/$n.err"; then
         echo "ECHEC (compilation) $n"; sed -n 1,20p "$out/$n.err"; fail=$((fail+1)); failed="$failed $n"; continue
     fi
-    if "$out/$n" > "$out/$n.log" 2>&1; then
+    if (cd "$out" && "./$n" > "$n.log" 2>&1); then   # lance dans le dossier temporaire : les fichiers que le test ecrit n'atterrissent pas dans le depot
         echo "ok      $n : $(tail -n 1 "$out/$n.log")"; pass=$((pass+1))
     else
         echo "ECHEC   $n"; tail -n 30 "$out/$n.log"; fail=$((fail+1)); failed="$failed $n"

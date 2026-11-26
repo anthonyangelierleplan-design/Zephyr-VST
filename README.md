@@ -117,6 +117,14 @@ Deux plugins, même design, même dépôt :
 - Verifies sans defaut : courbes et plages des enveloppes (1 ms a 5 s, attaque en charge de condensateur), fin de note, crepitement des reglages (aucun), denormaux (le plugin est protege), bruit residuel des effets.
 - Tests : `tools/tests/continuite_voix`, `tools/tests/audit_effets_zephyr`.
 
+## v4 (cassette, arpege en accords, vitesse par pas — repris d'Orage v23)
+- **Module CASSETTE / VHS** dans le rack (11e module, Z-11 TAPE, ecran a bobines) : WOW (pleurage lent), FLUTTER (scintillement rapide), SATURATE (saturation de bande, niveau compense), AGE (bande usee : aigus et graves qui s'en vont), HISS (souffle), CRUNCH (pertes et micro-coupures), MIX. Tout a zero : sortie = entree exactement (le module ne lit meme pas sa ligne a retard). Absent du rack des anciens projets.
+- **Arpegiateur : mode CHORD** (7e cran du potard MODE) : chaque pas rejoue l'accord tenu entier ; OCTAVE monte d'une octave a chaque tour ; ratchet, chance, gate et swing s'appliquent a l'accord.
+- **Vitesse par pas** : au-dessus de la grille NOTE STEPS, RATCHET / STEP SPEED. En STEP SPEED, la rangee du bas regle la vitesse de chaque pas : x1, x2, x4, x1/2, x3/2 (clic = suivante, molette, clic droit = x1). Fonctionne en ARP et en SEQ, avec le swing, et reste cale sur le DAW.
+- **Potards crantes** : les libelles des crans ne sont plus coupes (MODE, OCTAVE, RATCHET...).
+- **9 presets cassette** : Faded Polaroid (Pad), Worn Solina (Strings), Filmstrip Keys (Keys / Bells), Lullaby Sine (Brass / Lead), VHS Bass (Bass), Chord Pulse 82 et Half-Speed Memory (Arp / Seq), Rainy Projector (Texture), Cassette Memories (Rack FX, aussi dans Zephyr FX).
+- Projets et patchs des versions precedentes relus a l'identique. Test : `tools/tests/v4_cassette_arp`.
+
 ## Compilation (GitHub Actions)
 Chaque push sur `main` lance le build Windows et publie `Zephyr-VST3-Windows.zip` dans la Release **latest** du dépôt.
 Dézipper et copier `Zephyr.vst3` et `Zephyr FX.vst3` dans `C:\Program Files\Common Files\VST3` (remplacer la v1 : mêmes identifiants, les projets se rouvrent).

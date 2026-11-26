@@ -129,6 +129,7 @@ juce::Colour moduleColour (int node)
         case zephyr::NDelay:    c = 0xff7a5cff; break;   // indigo
         case zephyr::NVerb:     c = 0xffb35cff; break;   // violet
         case zephyr::NWide:     c = 0xffff5cc4; break;   // magenta
+        case zephyr::NTape:     c = 0xffe0a868; break;   // sepia (cassette, v4)
         default:                return juce::Colour (look::T().accent);
     }
     const juce::Colour col (c);
@@ -140,7 +141,7 @@ const char* moduleCode (int node)
     {
         case zephyr::NSat: return "Z-1  SAT"; case zephyr::NColor: return "Z-2  EQ"; case zephyr::NFilter: return "Z-3  VCF"; case zephyr::NComp: return "Z-4  OPTO";
         case zephyr::NPhaser: return "Z-5  PHASE"; case zephyr::NEnsemble: return "Z-6  STRINGS"; case zephyr::NStut: return "Z-7  REPEAT"; case zephyr::NDelay: return "Z-8  ECHO";
-        case zephyr::NVerb: return "Z-9  PLATE"; case zephyr::NWide: return "Z-10  WIDE"; default: return "";
+        case zephyr::NVerb: return "Z-9  PLATE"; case zephyr::NWide: return "Z-10  WIDE"; case zephyr::NTape: return "Z-11  TAPE"; default: return "";
     }
 }
 // pictogramme du module dans r (trace au trait)
@@ -179,6 +180,10 @@ juce::Path moduleGlyph (int node, juce::Rectangle<float> r)
                                 p.startNewSubPath (x0 + w * 0.12f, cy - h * 0.3f); p.lineTo (x0, cy); p.lineTo (x0 + w * 0.12f, cy + h * 0.3f);
                                 p.startNewSubPath (x0 + w * 0.88f, cy - h * 0.3f); p.lineTo (x0 + w, cy); p.lineTo (x0 + w * 0.88f, cy + h * 0.3f);
                                 p.addEllipse (x0 + w * 0.5f - h * 0.22f, cy - h * 0.22f, h * 0.44f, h * 0.44f); break;
+        case zephyr::NTape:     p.addRoundedRectangle (x0 + w * 0.02f, y0 + h * 0.12f, w * 0.96f, h * 0.76f, h * 0.08f);                              // cassette : boitier, deux bobines, fenetre
+                                p.addEllipse (x0 + w * 0.30f - h * 0.15f, cy - h * 0.15f, h * 0.3f, h * 0.3f); p.addEllipse (x0 + w * 0.70f - h * 0.15f, cy - h * 0.15f, h * 0.3f, h * 0.3f);
+                                p.startNewSubPath (x0 + w * 0.30f, cy + h * 0.15f); p.lineTo (x0 + w * 0.70f, cy + h * 0.15f);
+                                p.startNewSubPath (x0 + w * 0.22f, y0 + h * 0.88f); p.lineTo (x0 + w * 0.30f, y0 + h * 0.74f); p.lineTo (x0 + w * 0.70f, y0 + h * 0.74f); p.lineTo (x0 + w * 0.78f, y0 + h * 0.88f); break;
         default: break;
     }
     return p;
@@ -430,6 +435,35 @@ private:
                 if (bass > 0.01f) { g.setColour (mc.withAlpha (0.6f * on * bass)); g.fillEllipse (cx - 3.f, cy - 3.f, 6.f, 6.f); }
                 break;
             }
+            case zephyr::NTape:
+            {
+                // deux bobines qui tournent ; WOW / FLUTTER font pleurer leur vitesse, AGE assombrit, HISS fait grésiller l'écran
+                const float wow = P ("tapeWow"), fl = P ("tapeFlutter"), age = P ("tapeAge"), hiss = P ("tapeHiss"), sat = P ("tapeSat");
+                const float cy = r.getCentreY(), rr = r.getHeight() * 0.34f;
+                const float ang = t * 2.4f + wow * 0.9f * std::sin (t * 0.55f * 6.283f) + fl * 0.12f * std::sin (t * 6.8f * 6.283f);
+                const juce::Colour c = mc.interpolatedWith (juce::Colour (0xff6a4a2a), 0.55f * age);
+                for (int k = 0; k < 2; ++k)
+                {
+                    const float cx = r.getX() + r.getWidth() * (k == 0 ? 0.28f : 0.72f), rad = rr * (k == 0 ? 0.95f : 0.75f);
+                    juce::Path p; p.addEllipse (cx - rad, cy - rad, 2.f * rad, 2.f * rad);
+                    for (int s = 0; s < 3; ++s)
+                    {
+                        const float a = ang * (k == 0 ? 1.f : 1.27f) + (float) s * 2.094f;
+                        p.startNewSubPath (cx + 0.25f * rad * std::cos (a), cy + 0.25f * rad * std::sin (a)); p.lineTo (cx + 0.8f * rad * std::cos (a), cy + 0.8f * rad * std::sin (a));
+                    }
+                    glow (g, p, c, on, 1.4f);
+                }
+                juce::Path tape; tape.startNewSubPath (r.getX() + r.getWidth() * 0.28f, cy + rr * 0.95f);
+                tape.quadraticTo (r.getCentreX(), cy + rr * (1.05f + 0.25f * sat * std::sin (t * 3.f)), r.getX() + r.getWidth() * 0.72f, cy + rr * 0.75f);
+                glow (g, tape, c, on * 0.8f, 1.2f);
+                if (hiss > 0.01f)
+                {
+                    juce::Random rnd ((juce::int64) (t * 30.f));
+                    g.setColour (c.withAlpha (0.5f * on * hiss));
+                    for (int k = 0; k < (int) (60.f * hiss); ++k) g.fillRect (r.getX() + rnd.nextFloat() * r.getWidth(), r.getY() + rnd.nextFloat() * r.getHeight(), 1.5f, 1.5f);
+                }
+                break;
+            }
             default: break;
         }
     }
@@ -566,10 +600,11 @@ void saveDrawerPref (int v) { const auto f = drawerFile(); f.getParentDirectory(
 juce::File scopeFile() { return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Foudre Audio").getChildFile ("zephyr-scope.txt"); }
 void saveThemePref (int i) { const auto f = themeFile(); f.getParentDirectory().createDirectory(); f.replaceWithText (juce::String (i)); }
 
-const int kTileNodes[] = { zephyr::NSat, zephyr::NColor, zephyr::NFilter, zephyr::NComp, zephyr::NPhaser, zephyr::NEnsemble, zephyr::NStut, zephyr::NDelay, zephyr::NVerb, zephyr::NWide };   // meme ordre que le rack et le spectre
+const int kTileNodes[] = { zephyr::NSat, zephyr::NColor, zephyr::NFilter, zephyr::NComp, zephyr::NPhaser, zephyr::NEnsemble, zephyr::NStut, zephyr::NDelay, zephyr::NVerb, zephyr::NTape, zephyr::NWide };   // meme ordre que le rack et le spectre
+constexpr int kTileShift = 25;                       // 11e tuile (CASSETTE, v4) : la section MASTER descend d'une rangee
 const char* nodeName (int n)
 {
-    static const char* names[kNumNodes] { "INPUT", "STEREO WIDE", "SATURATION", "EQ", "FILTER", "PHASER", "COMP", "ENSEMBLE", "DELAY", "REVERB", "STUTTER", "OUTPUT" };
+    static const char* names[kNumNodes] { "INPUT", "STEREO WIDE", "SATURATION", "EQ", "FILTER", "PHASER", "COMP", "ENSEMBLE", "DELAY", "REVERB", "STUTTER", "CASSETTE", "OUTPUT" };
     return names[juce::jlimit (0, (int) kNumNodes - 1, n)];
 }
 
@@ -818,7 +853,19 @@ void KnobUnit::mouseDown (const juce::MouseEvent& e)
 void KnobUnit::resized()
 {
     auto b = getLocalBounds().withTrimmedBottom (16);
-    if (! choices.isEmpty()) b = b.withSizeKeepingCentre ((int) (juce::jmin (b.getWidth(), b.getHeight()) * 0.74f), (int) (juce::jmin (b.getWidth(), b.getHeight()) * 0.74f));   // potard cranté : place pour les libellés autour
+    if (! choices.isEmpty() && choices.size() <= 8)                                 // potard cranté : place pour les libellés autour (les plus longs sur les cotes ne doivent pas sortir du cadre)
+    {
+        const juce::Font f (juce::FontOptions (8.8f, juce::Font::bold));
+        int side = 0;
+        for (int i = 0; i < choices.size(); ++i)
+        {
+            const float a = juce::MathConstants<float>::pi * (1.2f + 1.6f * (choices.size() > 1 ? (float) i / (float) (choices.size() - 1) : 0.5f));
+            side = juce::jmax (side, (int) ((float) juce::GlyphArrangement::getStringWidthInt (f, choices[i]) * std::abs (std::sin (a))));
+        }
+        const int d = juce::jmin ((int) (juce::jmin (b.getWidth(), b.getHeight()) * 0.74f), (int) ((float) (b.getWidth() - 2 * side - 8) / 1.04f));
+        b = b.withSizeKeepingCentre (d, d);
+    }
+    else if (! choices.isEmpty()) b = b.withSizeKeepingCentre ((int) (juce::jmin (b.getWidth(), b.getHeight()) * 0.74f), (int) (juce::jmin (b.getWidth(), b.getHeight()) * 0.74f));
     slider.setBounds (b);
 }
 
@@ -933,7 +980,12 @@ void KnobUnit::paint (juce::Graphics& g)
             const float a = sa + (n > 1 ? (float) i / (float) (n - 1) : 0.5f) * (ea - sa);
             g.setColour ((i == cur ? look::cvRing : look::print).withAlpha ((i == cur ? 1.f : 0.85f) * alpha));
             g.fillEllipse (c.x + r * 0.74f * std::sin (a) - 1.8f, c.y - r * 0.74f * std::cos (a) - 1.8f, 3.6f, 3.6f);
-            if (n <= 8) g.drawText (choices[i], (int) (c.x + r * (0.98f + 0.04f * std::abs (std::sin (a))) * std::sin (a)) - 24, (int) (c.y - r * 1.0f * std::cos (a)) - 6, 48, 12, juce::Justification::centred, false);
+            if (n <= 8)                                                            // l'etiquette s'ecarte du potard de la moitie de sa largeur sur les cotes : jamais masquee par le bouton
+            {
+                const float tw = (float) juce::GlyphArrangement::getStringWidthInt (g.getCurrentFont(), choices[i]), sn = std::sin (a);
+                const float lx = c.x + (r * 1.02f + 0.5f * tw * std::abs (sn)) * sn;
+                g.drawText (choices[i], (int) lx - 30, (int) (c.y - r * 1.0f * std::cos (a)) - 6, 60, 12, juce::Justification::centred, false);
+            }
         }
     }
     else                                                                           // anneau lumineux fin (plus de chiffres 0..10) : plage, butees et repere du milieu
@@ -2196,6 +2248,13 @@ void ZephyrEditor::buildUnits()
         };
     }
 
+    {   // CASSETTE : bande / VHS fatiguee, facon Boards of Canada (tout a zero = transparent)
+        auto* u = newUnit (NTape, "CASSETTE  /  VHS", kModH, false);
+        auto* a = mk (*u, "tapeWow", "WOW"); auto* b = mk (*u, "tapeFlutter", "FLUTTER"); auto* c = mk (*u, "tapeSat", "SATURATE");
+        auto* d = mk (*u, "tapeAge", "AGE"); auto* e = mk (*u, "tapeHiss", "HISS"); auto* f = mk (*u, "tapeCrunch", "CRUNCH"); auto* m = mk (*u, "tapeMix", "MIX");
+        u->layoutFn = [=] (juce::Rectangle<int> r) { place (r, { a, b, c, d, e, f, m }, 0, 86); };
+    }
+
     // ---------------- bandeau de modulation (fixe) : sources CV a droite de chaque module
 #if ! ZEPHYR_SYNTH
     auto addDst = [this] (juce::Component& parent, const char* id)
@@ -2259,8 +2318,8 @@ void ZephyrEditor::buildUnits()
         side.addAndMakeVisible (*b);
         tiles.push_back (std::move (b));
     }
-    side.subtitles.push_back ({ "MASTER", 300 });
-    side.subtitles.push_back ({ "RESET", 556 });
+    side.subtitles.push_back ({ "MASTER", 300 + kTileShift });
+    side.subtitles.push_back ({ "RESET", 556 + kTileShift });
     for (int n = 0; n < kNumNodes; ++n)                                                   // toutes les prises vivent dans le panneau patchbay
     {
         if (n != NOut) patchPanel.audioOut[n] = patchBay.makeJack (patchPanel, JackKind::AudioOut, n);
@@ -2552,13 +2611,13 @@ void ZephyrEditor::resized()
     layoutTiles();
     if (hasStrip)
     {
-        knobById.at ("mix")->setBounds (8, 326, 67, 94);
-        knobById.at ("output")->setBounds (75, 326, 67, 94);
-        foot.setBounds (46, 432, 58, 90);
+        knobById.at ("mix")->setBounds (8, 326 + kTileShift, 67, 94);
+        knobById.at ("output")->setBounds (75, 326 + kTileShift, 67, 94);
+        foot.setBounds (46, 432 + kTileShift, 58, 90);
     }
-    else knobById.at ("output")->setBounds (25, 330, 100, 120);
-    clearRackBtn.setBounds (12, 586, 126, 28);
-    resetBtn.setBounds (12, 620, 126, 28);
+    else knobById.at ("output")->setBounds (25, 330 + kTileShift, 100, 120);
+    clearRackBtn.setBounds (12, 586 + kTileShift, 126, 28);
+    resetBtn.setBounds (12, 620 + kTileShift, 126, 28);
 
     rebuildFacade();
 }

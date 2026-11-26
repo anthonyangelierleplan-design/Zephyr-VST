@@ -796,7 +796,7 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
         {
             as->setBounds (r.getX(), r.getY(), r.getWidth(), 38);
             hold->setBounds (r.getX(), r.getY() + 44, r.getWidth() / 2 - 4, 30); learn->setBounds (r.getX() + r.getWidth() / 2, r.getY() + 44, r.getWidth() / 2, 30);
-            const auto rest = r.withTrimmedTop (82); const int cw = r.getWidth() / 3;
+            const auto rest = r.withTrimmedTop (82);
             place (rest, { det, gl }, 0, 72);
             const int bx = r.getX() + 148, bw = r.getRight() - bx;
             tgp->setBounds (bx, rest.getCentreY() - 22, bw, 12); bd->setBounds (bx, rest.getCentreY() - 6, bw, 26);

@@ -75,7 +75,7 @@ Les chiffres viennent des tests automatiques, pas d'une écoute : l'oreille rest
 3. Batterie de tests.
 4. Listes enregistrées intactes.
 5. Capture agrandie regardée.
-6. README à jour.
+6. README (état actuel) et CHANGELOG (nouvelle version, en haut) à jour ; `bash tools/tests/run.sh` sans échec.
 7. Accord donné.
 8. Push sur les deux dépôts, deux builds verts.
 9. Compte rendu : mesuré, non vérifié, à juger à l'oreille.

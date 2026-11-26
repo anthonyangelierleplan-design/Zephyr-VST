@@ -1021,7 +1021,7 @@ void KnobUnit::paint (juce::Graphics& g)
     {
         const auto tag = shownLearn ? juce::String ("LEARN") : "CC" + juce::String (shownCc);
         g.setFont (font (8.5f));
-        const int tw = (int) font (8.5f).getStringWidth (tag) + 8, tx = getWidth() - tw - 1;
+        const int tw = juce::GlyphArrangement::getStringWidthInt (font (8.5f), tag) + 8, tx = getWidth() - tw - 1;
         g.setColour (juce::Colour (0xffe0662a).withAlpha (shownLearn ? 0.95f : 0.8f));
         g.fillRoundedRectangle ((float) tx, 1.f, (float) tw, 10.f, 3.f);
         g.setColour (juce::Colours::black.withAlpha (0.85f));
@@ -2576,7 +2576,6 @@ void ZephyrEditor::resized()
     // ---- colonnes : panneau lateral | rack | (bandeau de modulation en bas)
     const int vpW = W - 170;
     const int top = kHeaderH + 8;
-    const int stripH = stripOpen ? 172 + 8 : 0;
     patchToggle.setBounds (W - 310, 72, 148, 20);
     stripToggle.setBounds (W - 158, 72, 148, 20);
     {   // le texte des languettes suit l'etat (sans reappeler resized)

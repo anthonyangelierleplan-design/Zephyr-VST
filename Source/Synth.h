@@ -251,7 +251,8 @@ struct Ladder
 // tanh rapide (Pade 7/6) : erreur < 1e-4 sur +/-4.5, borne au-dela ; utilisee dans les etages surechantillonnes
 inline float tanhFast (float x)
 {
-    if (x > 4.5f) return 1.f; if (x < -4.5f) return -1.f;
+    if (x > 4.5f) return 1.f;
+    if (x < -4.5f) return -1.f;
     const float x2 = x * x;
     return x * (135135.f + x2 * (17325.f + x2 * (378.f + x2))) / (135135.f + x2 * (62370.f + x2 * (3150.f + x2 * 28.f)));
 }
@@ -304,7 +305,8 @@ struct Ms10Tab
     static double potOf (double res)                                // reglage de resonance (0..1) -> position electrique du potard PEAK, calee sur les mesures (30 % : +2,5 dB, 60 % : +6 dB, 100 % : oscille)
     {
         static const double x[] = { 0.0, 0.15, 0.30, 0.45, 0.60, 0.75, 0.88, 1.0 }, y[] = { 0.0, 0.36, 0.47, 0.52, 0.57, 0.60, 0.64, 0.75 };
-        if (res <= 0.0) return 0.0; if (res >= 1.0) return y[7];
+        if (res <= 0.0) return 0.0;
+        if (res >= 1.0) return y[7];
         int i = 0; while (i < 6 && x[i + 1] < res) ++i;
         return y[i] + (res - x[i]) / (x[i + 1] - x[i]) * (y[i + 1] - y[i]);
     }
@@ -1096,7 +1098,7 @@ private:
         for (int i = 0; i < len; ++i)
         {
             for (int q = 0; q < 20; ++q) cc[q] += cd[q];
-            const float gL = cc[0], gH = cc[1], kL = cc[2], kH = cc[3], kSem = cc[4], kLad = cc[5], res = cc[6], morph = cc[7], drive = cc[8], drvEmph = cc[9];
+            const float gL = cc[0], gH = cc[1], kH = cc[3], res = cc[6], morph = cc[7], drive = cc[8], drvEmph = cc[9];
             const float foldA = cc[10], foldS = cc[11], level = cc[12], lv1 = cc[13], l2 = cc[14], noiseA = cc[15];
             // FM audio (sens au choix) ; VCO2 est recale par VCO1 si le hard sync est actif
             // increments de phase bornes sous Nyquist (une FM extreme sur une note aigue pouvait les faire exploser -> phase hors [0,1[ -> NaN)

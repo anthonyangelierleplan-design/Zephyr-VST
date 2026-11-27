@@ -1,4 +1,6 @@
 #include "SynthEditor.h"
+#include <cstdlib>
+#include "FoudreAccords.h"
 #include <complex>
 
 using namespace zephyr;
@@ -117,7 +119,9 @@ void Tag::paint (juce::Graphics& g)
 {
     g.setColour (look::print.withAlpha (0.65f));
     g.setFont (bold (size));
-    g.drawText (text, getLocalBounds(), just, true);
+    const int lines = juce::jmax (1, (int) ((float) getHeight() / (size + 3.f)));     // assez haut : le texte passe a la ligne au lieu d'etre coupe
+    if (lines > 1) g.drawFittedText (text, getLocalBounds(), just, lines, 0.9f);
+    else g.drawText (text, getLocalBounds(), just, true);
 }
 
 namespace
@@ -166,7 +170,7 @@ void StepGrid::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheel
     if (paramInt (proc.apvts, "s_arpType") != 1 || (float) e.y > (float) getHeight() * 0.64f) return;
     const int k = juce::jlimit (0, 15, (int) ((float) e.x / ((float) getWidth() / 16.f)));
     const int d = (w.deltaY > 0 ? 1 : -1) * (e.mods.isShiftDown() ? 12 : 1);
-    proc.arpPat.seqNote[k] = juce::jlimit (0, 127, proc.arpPat.seqNote[k].load() + d);
+    proc.arpPat.transposeStep (k, d);                                              // v5 : un accord se transpose en bloc
     repaint();
 }
 
@@ -195,8 +199,23 @@ void StepGrid::paint (juce::Graphics& g)
         g.drawText (juce::String (k + 1), cell.toNearestInt().withTrimmedTop (juce::roundToInt (cell.getHeight()) - 12), juce::Justification::centred, false);
         if (seqType && st > 0)
         {
-            g.setColour (juce::Colours::black.withAlpha (0.85f * dim)); g.setFont (bold (13.f));
-            g.drawText (noteName (proc.arpPat.seqNote[k].load()), cell.toNearestInt().withTrimmedBottom (10), juce::Justification::centred, false);
+            int nt[zephyr::kSeqChordMax]; const int nn = proc.arpPat.stepNotes (k, nt);
+            g.setColour (juce::Colours::black.withAlpha (0.85f * dim));
+            if (nn > 1)                                                             // Chord Seq (v5) : nom de l'accord, et sa note la plus grave en petit
+            {
+                int lo = nt[0]; for (int q = 1; q < nn; ++q) lo = juce::jmin (lo, nt[q]);
+                auto nm = juce::String::fromUTF8 (foudre::accords::nomAccord (nt, nn).c_str());
+                if (nm.isEmpty()) nm = noteName (lo) + "+" + juce::String (nn - 1);
+                auto tr = cell.toNearestInt().withTrimmedBottom (12).reduced (2, 0);
+                g.setFont (bold (12.f)); g.drawFittedText (nm, tr.withTrimmedBottom (tr.getHeight() / 3), juce::Justification::centred, 1, 0.6f);
+                g.setFont (bold (8.5f)); g.setColour (juce::Colours::black.withAlpha (0.6f * dim));
+                g.drawText (juce::String::fromUTF8 (foudre::accords::nomNote (lo)) + juce::String (lo / 12 - 2), tr.withTrimmedTop (tr.getHeight() * 2 / 3), juce::Justification::centred, false);   // basse, en bemols comme le nom de l'accord
+            }
+            else
+            {
+                g.setFont (bold (13.f));
+                g.drawText (noteName (nt[0]), cell.toNearestInt().withTrimmedBottom (10), juce::Justification::centred, false);
+            }
             if (proc.arpPat.tie[k].load() != 0) { g.setColour (juce::Colours::black.withAlpha (0.8f * dim)); g.fillRoundedRectangle (cell.getRight() - 9.f, cell.getCentreY() - 3.f, 12.f, 6.f, 2.f); }
         }
         const int spd = proc.arpPat.speed[k].load();
@@ -474,6 +493,22 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
         comboAtt.push_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (proc.apvts, id, *cb));
         auto* r = cb.get(); owned.push_back (std::move (cb)); return r;
     };
+    // v5 : un seul choix OFF / ARP / SEQ (avant : OFF-ON-LATCH puis ARP-SEQ). SEQ joue meme "ARP" eteint, LATCH est devenu HOLD.
+    auto modeSel = [this] (juce::Component& parent)
+    {
+        auto* ap = &proc.apvts;
+        auto s = std::make_unique<FuncSelector> (juce::StringArray { "OFF", "ARP", "SEQ" },
+            [ap] { return paramInt (*ap, "s_arpType") == 1 ? 2 : (paramInt (*ap, "s_arpOn") != 0 ? 1 : 0); },
+            [ap] (int m)
+            {
+                auto put = [ap] (const char* id, float real) { if (auto* q = ap->getParameter (id)) q->setValueNotifyingHost (q->convertTo0to1 (real)); };
+                if (m == 0) { put ("s_arpOn", 0.f); put ("s_arpType", 0.f); put ("s_seqRec", 0.f); }
+                else if (m == 1) { if (paramInt (*ap, "s_arpOn") == 0) put ("s_arpOn", 1.f); put ("s_arpType", 0.f); put ("s_seqRec", 0.f); }
+                else { if (paramInt (*ap, "s_arpOn") == 0) put ("s_arpOn", 1.f); put ("s_arpType", 1.f); }
+            });
+        auto* r = s.get(); parent.addAndMakeVisible (*r); owned.push_back (std::move (s)); return r;
+    };
+    auto dimmed = [] (juce::Component* c, bool active) { if (c->isEnabled() != active) { c->setEnabled (active); c->setAlpha (active ? 1.f : 0.38f); } };
     // potards alignes verticalement au centre de la zone, a taille fixe
     auto place = [] (juce::Rectangle<int> r, std::vector<KnobUnit*> ks, int x0, int cellW)
     {
@@ -506,8 +541,8 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
         // ---- rang 1 : arpegiateur et horloge (meme ordre que la face avant de l'Hydrasynth)
         {
             auto* u = unit ("ARPEGGIATOR  /  SEQUENCER");
-            auto* on = selector (*u, "s_arpOn", juce::StringArray { "OFF", "ON", "LATCH" });
-            auto* trip = toggle (*u, "s_arpTriplet", "TRIPLET");
+            auto* on = modeSel (*u);
+            auto* trip = toggle (*u, "s_arpTriplet", "TRIPLET");          // v5 : les triolets sont dans DIVISION ; ce bouton ne reste visible que s'il est allume (ancien projet)
             auto* tap = button (*u, "TAP TEMPO", [this]
             {
                 static double last = 0.0, avg = 0.0;
@@ -520,11 +555,21 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
             });
             auto* dir = knob (*u, "s_arpMode", "MODE");  dir->setChoices ({ "UP", "DOWN", "UP-DN", "PLAYED", "RANDOM", "CONVRG", "CHORD" });
             auto* oct = knob (*u, "s_arpOct", "OCTAVE"); oct->setChoices ({ "1", "2", "3", "4" });
-            auto* free = toggle (*u, "s_arpFree", "FREE"); auto* thru = toggle (*u, "s_arpThru", "THRU");
+            auto* hold = toggle (*u, "s_hold", "HOLD");                   // v5 : LATCH et HOLD ne font plus qu'un
+            auto* free = toggle (*u, "s_arpFree", "RUN"); auto* thru = toggle (*u, "s_arpThru", "THRU");
+            hold->setTooltip ("HOLD : the notes (and the arp / sequence) keep playing after you release the keys");
+            free->setTooltip ("RUN : the sequence and the modulation lanes play without holding a key");
+            thru->setTooltip ("THRU : the keys you play also sound, on top of the arp / sequence");
             auto* shift = knob (*u, "s_arpShift", "SHIFT"); auto* clus = knob (*u, "s_arpCluster", "CLUSTER");     // mode POLY (rotation sur 4 VCO) : decalages
             auto* tp = tag (*u, "POLY : 4 VCO", juce::Justification::centred);
-            auto* type = selector (*u, "s_arpType", juce::StringArray { "ARP", "SEQ" });
-            auto* t1 = tag (*u, "ON / LATCH"); auto* t4 = tag (*u, "TYPE  (SEQ = one stored note per step)");
+            auto* t1 = tag (*u, "OFF  /  ARP  /  SEQ"); auto* t4 = tag (*u, "PLAY");
+            on->setTooltip ("ARP : plays the keys you hold.  SEQ : plays the stored steps (REC to record them), transposed by the key you play.");
+            refreshers.push_back ([=]
+            {
+                const bool seq = paramInt (proc.apvts, "s_arpType") == 1;
+                for (juce::Component* c : { (juce::Component*) dir, (juce::Component*) oct, (juce::Component*) shift, (juce::Component*) clus, (juce::Component*) tp }) dimmed (c, ! seq);
+                if (trip->isVisible() != (paramInt (proc.apvts, "s_arpTriplet") != 0)) u->resized();
+            });
             u->layoutFn = [=] (juce::Rectangle<int> r)
             {
                 const int w = r.getWidth(), kw = juce::jmin (112, (int) (w * 0.2f)), sw2 = juce::jmin (66, (int) (w * 0.115f));
@@ -534,23 +579,28 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
                 tp->setBounds (sx, r.getY(), 2 * sw2, 10);
                 shift->setBounds (sx, r.getY() + 12, sw2, r.getHeight() - 12); clus->setBounds (sx + sw2, r.getY() + 12, sw2, r.getHeight() - 12);
                 const int rx = sx + 2 * sw2 + 12, rw = r.getRight() - rx, y = r.getY();
-                t1->setBounds (rx, y, 100, 10);                                  on->setBounds (rx, y + 12, rw, 34);
-                trip->setBounds (rx, y + 52, rw / 2 - 3, 32);                    tap->setBounds (rx + rw / 2 + 3, y + 52, rw - rw / 2 - 3, 32);
-                t4->setBounds (rx, y + 92, rw, 10);                              type->setBounds (rx, y + 104, rw * 2 / 5 - 2, 32);
-                free->setBounds (rx + rw * 2 / 5 + 2, y + 104, rw * 3 / 10 - 2, 32); thru->setBounds (rx + rw * 7 / 10 + 2, y + 104, rw - rw * 7 / 10 - 2, 32);
+                t1->setBounds (rx, y, rw, 10);                                   on->setBounds (rx, y + 12, rw, 34);
+                t4->setBounds (rx, y + 52, rw, 10);
+                const int bw = rw / 3;
+                hold->setBounds (rx, y + 64, bw - 3, 30); free->setBounds (rx + bw, y + 64, bw - 3, 30); thru->setBounds (rx + 2 * bw, y + 64, rw - 2 * bw, 30);
+                trip->setVisible (paramInt (proc.apvts, "s_arpTriplet") != 0);     // apres la mise en page du module (qui remontre tout)
+                if (trip->isVisible()) { trip->setBounds (rx, y + 102, rw / 2 - 3, 30); tap->setBounds (rx + rw / 2 + 3, y + 102, rw - rw / 2 - 3, 30); }
+                else tap->setBounds (rx, y + 102, rw, 30);
             };
         }
         {
             auto* u = unit ("CLOCK  &  FEEL");
-            auto* rate = knob (*u, "s_arpRate", "TEMPO"); auto* sync = combo (*u, "s_arpSync");
-            auto* rat = knob (*u, "s_arpRatchet", "RATCHET"); rat->setChoices ({ "1x", "2x", "3x", "4x" });
+            // v5 : DIVISION "Free" = horloge libre, reglee en pas par seconde par le potard HZ (grise quand l'horloge suit le tempo) ;
+            // le RATCHET global a rejoint la grille des pas (bouton ALL), les triolets sont dans DIVISION
+            auto* rate = knob (*u, "s_arpRate", "HZ"); auto* sync = combo (*u, "s_arpSync");
             auto* chance = knob (*u, "s_arpChance", "CHANCE"); auto* gate = knob (*u, "s_arpGate", "GATE"); auto* swing = knob (*u, "s_arpSwing", "SWING");
             auto* ts = tag (*u, "DIVISION");
+            refreshers.push_back ([=] { dimmed (rate, paramInt (proc.apvts, "s_arpSync") == 0); });
             u->layoutFn = [=] (juce::Rectangle<int> r)
             {
                 ts->setBounds (r.getX(), r.getY(), 80, 10); sync->setBounds (r.getX(), r.getY() + 12, 150, 28);
-                const int cw = juce::jmin (100, (r.getWidth() - 170) / 5), x0 = r.getX() + 170;
-                int x = x0; for (auto* k : { rate, rat, chance, gate, swing }) { k->setBounds (x, r.getY(), cw, r.getHeight()); x += cw; }
+                const int cw = juce::jmin (100, (r.getWidth() - 170) / 4), x0 = r.getX() + 170;
+                int x = x0; for (auto* k : { rate, chance, gate, swing }) { k->setBounds (x, r.getY(), cw, r.getHeight()); x += cw; }
             };
         }
         // ---- rang 2 : pas des notes
@@ -561,16 +611,33 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
             auto* rnd = button (*u, "RANDOM", [grid] { grid->randomize(); }); auto* clr = button (*u, "CLEAR", [grid] { grid->clear(); });
             auto* rec = toggle (*u, "s_seqRec", "REC");
             auto stepLen = [this] { return juce::jlimit (1, 16, juce::roundToInt (proc.apvts.getRawParameterValue ("s_arpLen")->load()) + 1); };
-            auto* rest = button (*u, "REST", [this, stepLen, grid] { const int p = juce::jlimit (0, 15, proc.arpPat.recPos.load()); proc.arpPat.step[p] = 0; proc.arpPat.recPos = (p + 1) % stepLen(); grid->repaint(); });
-            auto* tie = button (*u, "TIE", [this, stepLen, grid] { const int p = (proc.arpPat.recPos.load() + stepLen() - 1) % stepLen(); proc.arpPat.tie[p] = 1 - proc.arpPat.tie[p].load(); grid->repaint(); });
-            auto* back = button (*u, "BACK", [this, stepLen, grid] { proc.arpPat.recPos = (proc.arpPat.recPos.load() + stepLen() - 1) % stepLen(); grid->repaint(); });
-            auto* t1 = tag (*u, "PATTERN LENGTH"); auto* t3 = tag (*u, "STEP RECORD  (type SEQ)");
+            auto* rest = button (*u, "REST", [this, stepLen, grid] { proc.recGroupClose = true; const int p = juce::jlimit (0, 15, proc.arpPat.recPos.load()); proc.arpPat.step[p] = 0; proc.arpPat.recPos = (p + 1) % stepLen(); grid->repaint(); });
+            auto* tie = button (*u, "TIE", [this, stepLen, grid] { proc.recGroupClose = true; const int p = (proc.arpPat.recPos.load() + stepLen() - 1) % stepLen(); proc.arpPat.tie[p] = 1 - proc.arpPat.tie[p].load(); grid->repaint(); });
+            auto* back = button (*u, "BACK", [this, stepLen, grid] { proc.recGroupClose = true; proc.arpPat.recPos = (proc.arpPat.recPos.load() + stepLen() - 1) % stepLen(); grid->repaint(); });
+            auto* chd = toggle (*u, "s_seqChord", "CHORD");                // v5 : CHORD = les notes jouees ensemble vont dans le meme pas ; 1 NOTE = une note par pas
+            chd->setTooltip ("CHORD : notes played together (within 60 ms) are stored in the same step, up to 6 notes. 1 NOTE : one note per step.");
+            auto* all = button (*u, "ALL RATCHET", [this, grid]
+            {   // v5 : remplace le potard RATCHET global : tous les pas passent au ratchet suivant (x1 > x2 > x3 > x4 > x1)
+                int mx = 1; for (int k = 0; k < 16; ++k) mx = juce::jmax (mx, proc.arpPat.ratchet[k].load());
+                const int nx = mx % 4 + 1;
+                for (int k = 0; k < 16; ++k) proc.arpPat.ratchet[k] = nx;
+                grid->repaint();
+            });
+            all->setTooltip ("Every step to the next ratchet value (x1, x2, x3, x4)");
+            auto* t1 = tag (*u, "PATTERN LENGTH"); auto* t3 = tag (*u, "STEP RECORD  (SEQ)");
+            refreshers.push_back ([=]
+            {
+                const bool seq = paramInt (proc.apvts, "s_arpType") == 1;
+                for (juce::Component* c : { (juce::Component*) rec, (juce::Component*) rest, (juce::Component*) tie, (juce::Component*) back, (juce::Component*) chd }) dimmed (c, seq);
+                const juce::String ct = paramInt (proc.apvts, "s_seqChord") != 0 ? "CHORD" : "1 NOTE";
+                if (chd->getButtonText() != ct) chd->setButtonText (ct);
+            });
             auto* rowR = button (*u, "RATCHET", nullptr); auto* rowS = button (*u, "STEP SPEED", nullptr);       // rangee du bas : ratchet ou vitesse du pas
             for (auto* b : { rowR, rowS }) { b->setClickingTogglesState (true); b->setRadioGroupId (4712); }
             rowR->setToggleState (true, juce::dontSendNotification);
             rowR->onClick = [grid] { grid->setSpeedRow (false); };
             rowS->onClick = [grid] { grid->setSpeedRow (true); };
-            auto* t2 = tag (*u, "SEQ : REC, then play keys - one step per note. Wheel on a step = pitch.", juce::Justification::topLeft, 9.f);
+            auto* t2 = tag (*u, "REC + play : notes played together = one chord step. Wheel = transpose.", juce::Justification::topLeft, 9.f);
             u->layoutFn = [=] (juce::Rectangle<int> r)
             {
                 t1->setBounds (r.getX(), r.getY(), 120, 10); len->setBounds (r.getX(), r.getY() + 12, 150, 28);
@@ -578,9 +645,11 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
                 t3->setBounds (r.getX() + 164, r.getY(), 150, 10);
                 rec->setBounds (r.getX() + 164, r.getY() + 12, 74, 28); rest->setBounds (r.getX() + 244, r.getY() + 14, 70, 24);
                 tie->setBounds (r.getX() + 164, r.getY() + 46, 74, 22); back->setBounds (r.getX() + 244, r.getY() + 46, 70, 22);
-                t2->setBounds (r.getX(), r.getY() + 74, 316, 22);
+                chd->setBounds (r.getX() + 164, r.getY() + 74, 150, 26);
+                t2->setBounds (r.getX(), r.getY() + 74, 156, 34);
                 grid->setBounds (r.getX() + 330, r.getY(), r.getWidth() - 330, r.getHeight());
                 rowR->setBounds (r.getRight() - 186, r.getY() - 25, 80, 18); rowS->setBounds (r.getRight() - 102, r.getY() - 25, 96, 18);
+                all->setBounds (r.getRight() - 290, r.getY() - 25, 98, 18);
             };
         }
         // ---- rang 3 : pistes de modulation
@@ -627,6 +696,7 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
                 }
             };
         }
+        startTimerHz (10);                                                // v5 : la page ARP rafraichit aussi ses reglages grises
         return;
     }
 
@@ -908,7 +978,7 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
     }
     {
         auto* u = unit ("ARP");
-        auto* on = selector (*u, "s_arpOn", juce::StringArray { "OFF", "ON", "LATCH" });
+        auto* on = modeSel (*u);
         auto* rt = knob (*u, "s_arpRate", "RATE"); auto* gt = knob (*u, "s_arpGate", "GATE");
         auto tg = std::make_unique<Tag> ("full control : ARP tab", juce::Justification::centred, 8.5f); auto* tgp = tg.get(); u->addAndMakeVisible (*tg); owned.push_back (std::move (tg));
         u->layoutFn = [=] (juce::Rectangle<int> r)
@@ -935,6 +1005,7 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
 void SynthPanel::timerCallback()
 {
     for (auto* v : lfoViews) v->repaint();
+    for (auto& f : refreshers) f();
     if (envLinkUnit != nullptr)                                                         // LINK : titre et commandes du panneau AMP / ENV 2
     {
         const bool on = proc.apvts.getRawParameterValue ("s_envLink")->load() > 0.5f;
@@ -1101,6 +1172,7 @@ SynthEditor::SynthEditor (ZephyrAudioProcessor& p)
     matrixBtn.onClick = [this] { matrix->setVisible (matrixBtn.getToggleState()); matrix->toFront (false); };
     synthTab.setToggleState (true, juce::dontSendNotification);
     showTab (0);
+    if (const char* ong = std::getenv ("FOUDRE_ONGLET")) { const int t = juce::jlimit (0, 2, std::atoi (ong)); showTab (t); (t == 0 ? synthTab : t == 1 ? arpTab : fxTab).setToggleState (true, juce::dontSendNotification); }   // banc d'essai (foudre-banc capture --onglet) ; jamais defini dans un DAW
 #endif
 
     const int dh = designHeight();

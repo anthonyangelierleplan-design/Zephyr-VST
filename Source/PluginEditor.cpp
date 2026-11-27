@@ -1043,9 +1043,19 @@ SegmentSelector::SegmentSelector (juce::AudioProcessorValueTreeState& apvts, con
     attachment.sendInitialUpdate();
 }
 
-void SegmentSelector::paint (juce::Graphics& g)
+static void paintSegments (juce::Graphics& g, juce::Component& c, const juce::StringArray& labels, int selected);
+void SegmentSelector::paint (juce::Graphics& g) { paintSegments (g, *this, labels, selected); }
+void FuncSelector::paint (juce::Graphics& g) { paintSegments (g, *this, labels, selected); }
+void FuncSelector::mouseDown (const juce::MouseEvent& e)
 {
     const int n = labels.size();
+    selected = juce::jlimit (0, n - 1, (int) (e.position.x / ((float) getWidth() / (float) n)));
+    set (selected); repaint();
+}
+static void paintSegments (juce::Graphics& g, juce::Component& c, const juce::StringArray& labels, int selected)
+{
+    const int n = labels.size();
+    auto getWidth = [&c] { return c.getWidth(); }; auto getHeight = [&c] { return c.getHeight(); };
     const float w = (float) getWidth() / (float) juce::jmax (1, n);
     for (int i = 0; i < n; ++i)
     {

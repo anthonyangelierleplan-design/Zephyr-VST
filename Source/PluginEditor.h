@@ -141,6 +141,22 @@ private:
     juce::ParameterAttachment attachment;
 };
 
+// Selecteur a touches qui ne suit pas un parametre unique : get() donne la touche allumee, set() applique le choix (v5 : OFF / ARP / SEQ)
+class FuncSelector : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
+{
+public:
+    FuncSelector (juce::StringArray names, std::function<int()> g, std::function<void (int)> s)
+        : labels (std::move (names)), get (std::move (g)), set (std::move (s)) { selected = get(); startTimerHz (15); }
+    ~FuncSelector() override { stopTimer(); }
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+private:
+    void timerCallback() override { const int v = get(); if (v != selected) { selected = v; repaint(); } }
+    juce::StringArray labels;
+    std::function<int()> get; std::function<void (int)> set;
+    int selected = 0;
+};
+
 class LedToggle : public juce::ToggleButton
 {
 public:

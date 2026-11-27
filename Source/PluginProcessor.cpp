@@ -161,7 +161,7 @@ const std::vector<SynDef>& synDefs()
         C ("s_assign", "Key Assign", "Poly|Mono|Unison|Share|Chord", 0);  B ("s_hold", "Hold", false);
         F ("s_uniDetune", "Unison Detune", 0, 1, 0.3f);  B ("s_chordLearn", "Chord Learn", false);
         for (int i = 5; i <= kMacros; ++i) F ("s_m" + juce::String (i), "Macro " + juce::String (i), 0, 1, 0);
-        F ("s_arpRate", "Arp Rate", 0, 1, 0.55f);  C ("s_arpSync", "Arp Sync", divs.joinIntoString ("|"), 0);
+        F ("s_arpRate", "Arp Rate", 0, 1, 0.55f);  { auto ad = divs; ad.set (0, "HZ (free)"); C ("s_arpSync", "Arp Sync", ad.joinIntoString ("|"), 0); }   // v5 : horloge libre = potard HZ (meme numero de cran)
         // Zephyr v1 (meme position que dans la v1 : l'automation des projets reste valide)
         F ("s_sub", "Sub Level", 0, 1, 0);  F ("s_drift", "Drift", 0, 1, 0);
         F ("s_pmEnv", "Poly-Mod Filter Env", 0, 1, 0);  F ("s_pmOsc", "Poly-Mod VCO2", 0, 1, 0);
@@ -190,6 +190,7 @@ const std::vector<SynDef>& synDefs()
         for (int i = 1; i <= kSlots; ++i) C ("s_slot" + juce::String (i) + "Dir", "Mod " + juce::String (i) + " Direction", "Forward|Backward|Both", 0);       // sens de chaque routage (v22)
         B ("s_envLink", "Env Link (Filter Env drives Amp)", false);                                                       // LINK des enveloppes (v3b)
         C ("s_env2Dst", "Env 2 Destination", "Off|VCO2 Pitch|VCO1+2 Pitch|FM|PWM|Wavefold|VCO2 Level|Ring", 0);  F ("s_env2Amt", "Env 2 Amount", -1, 1, 0);
+        B ("s_seqChord", "Step Record Chord", true);                                                                      // Chord Seq (v5) : en REC, les notes jouees ensemble vont dans le meme pas
         return v;
     }();
     return defs;
@@ -855,6 +856,7 @@ zephyr::SynthParams ZephyrAudioProcessor::readSynth()
     s.fmType = n(); s.fmFb = f(); s.fmKey = f();
     for (auto& sl : s.slot) sl.dir = n();
     s.envLink = b(); s.env2Dst = n(); s.env2Amt = f();
+    seqChord = b();
     jassert (i == rawSyn.size());
     s.quality = quality.load();
     {                                                                       // lissage des reglages (pas de crenelage quand on tourne un potard MIDI 7 bits)
@@ -939,7 +941,9 @@ void ZephyrAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         if (recActive) ap.on = 0;
         arp.setParams (ap);
         const bool arpOn = ap.on != 0;
-        if (recActive != lastRec) { lastRec = recActive; synth.allNotesOff(); arp.allOff(); if (recActive) arpPat.recPos = 0; }
+        if (recActive != lastRec) { lastRec = recActive; synth.allNotesOff(); arp.allOff(); if (recActive) arpPat.recPos = 0; recGroup.ferme(); }
+        if (recGroupClose.exchange (false)) recGroup.ferme();              // REST / TIE / BACK : la note suivante ouvre un nouveau pas
+        const double recT0 = recClock; recClock += (double) total / juce::jmax (8000.0, getSampleRate());
         {   // arpegiateur allume / eteint : on repart propre. Mode de jeu change : sans arpege, le synthe reprend les notes tenues lui-meme (aucune coupure) ;
             // avec l'arpege, il NE S'ARRETE PAS : les notes en cours sont relachees proprement et le motif continue (Zephyr, facon Mono/Poly)
             const bool arpToggled = ap.on != lastArpOn, modeChanged = ap.assign != lastAssign;
@@ -1043,9 +1047,24 @@ void ZephyrAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
                 }
                 if (recActive)
                 {
+                    const int len = juce::jlimit (1, zephyr::kArpSteps, arpParams.len);
                     const int rp = juce::jlimit (0, zephyr::kArpSteps - 1, arpPat.recPos.load());
-                    arpPat.seqNote[rp] = m.getNoteNumber(); arpPat.step[rp] = m.getFloatVelocity() >= 0.85f ? 2 : 1; arpPat.tie[rp] = 0;
-                    arpPat.recPos = (rp + 1) % juce::jlimit (1, zephyr::kArpSteps, arpParams.len);
+                    const double t = recT0 + (double) pos / juce::jmax (8000.0, getSampleRate());
+                    if (seqChord && recGroup.rejoint (t, m.getNoteNumber()))
+                    {   // Chord Seq : jouee avec les precedentes (< 60 ms) -> elle complete l'accord du pas qui vient d'etre ecrit
+                        const int pp = (rp + len - 1) % len;
+                        int nt[foudre::accords::notesMaxParPas]; int nn = recGroup.nombre();
+                        for (int k = 0; k < nn; ++k) nt[k] = recGroup.lesNotes()[k];
+                        nn = foudre::accords::rangeNotes (nt, nn);
+                        arpPat.setStepNotes (pp, nt, nn);
+                        if (m.getFloatVelocity() >= 0.85f) arpPat.step[pp] = 2;
+                    }
+                    else
+                    {
+                        const int nt = m.getNoteNumber();
+                        arpPat.setStepNotes (rp, &nt, 1); arpPat.step[rp] = m.getFloatVelocity() >= 0.85f ? 2 : 1; arpPat.tie[rp] = 0;
+                        arpPat.recPos = (rp + 1) % len;
+                    }
                 }
                 if (arpOn) { arp.noteOn (m.getNoteNumber(), m.getFloatVelocity()); if (arpThru) evs.push_back ({ pos, 0, m.getNoteNumber(), m.getFloatVelocity() }); } else evs.push_back ({ pos, 0, m.getNoteNumber(), m.getFloatVelocity() });
             }
@@ -1156,7 +1175,8 @@ juce::ValueTree ZephyrAudioProcessor::captureState()
     state.setProperty ("zv2", 1, nullptr); state.setProperty ("zv2c", 1, nullptr);                                 // Zephyr v2 : filtres circuit (0 MS-10, 1 CEM3320, 2 SEM, 3 Prophet), nouvelles destinations
     state.setProperty ("dirV3", 1, nullptr);                               // matrice : quantite 0..1 + sens par routage (v3)
     state.setProperty ("proP6", 1, nullptr);                               // resonance du filtre Prophet : loi du Prophet-6 (v3)
-    state.setProperty ("flt5", 1, nullptr);                                // volume des filtres egalise (v5)
+    state.setProperty ("flt5", 1, nullptr);
+    state.setProperty ("arp5", 1, nullptr);                                // Arp/Seq range (v5) : LATCH = HOLD, triolets dans DIVISION, ratchet dans la grille                                // volume des filtres egalise (v5)
     state.setProperty ("zv3b", 1, nullptr);                                // OCTAVE / TUNE du VCO 2 actifs avec un rapport FM, SEQ sans ARP (v3b)
     state.setProperty ("patch", juce::String (engine.serializePatch()), nullptr);
     state.setProperty ("rack", juce::String (engine.serializeRack()), nullptr);
@@ -1168,13 +1188,46 @@ juce::ValueTree ZephyrAudioProcessor::captureState()
 #if ZEPHYR_SYNTH
     {
         juce::String c;
-        for (int k = 0; k < zephyr::kArpSteps; ++k) c << arpPat.step[k].load() << ":" << arpPat.ratchet[k].load() << ":" << arpPat.seqNote[k].load() << ":" << arpPat.tie[k].load() << ":" << arpPat.speed[k].load() << ",";   // 5e champ : vitesse du pas (v4)
+        for (int k = 0; k < zephyr::kArpSteps; ++k)
+        {
+            c << arpPat.step[k].load() << ":" << arpPat.ratchet[k].load() << ":" << arpPat.seqNote[k].load() << ":" << arpPat.tie[k].load() << ":" << arpPat.speed[k].load();   // 5e champ : vitesse du pas (v4)
+            juce::String ch;                                                                    // 6e champ (v5) : notes ajoutees au pas (Chord Seq), "64.67"
+            for (int q = 0; q < zephyr::kSeqChordMax - 1; ++q) if (const int v = arpPat.chordNote[k][q].load(); v >= 0) ch << (ch.isEmpty() ? "" : ".") << v;
+            if (ch.isNotEmpty()) c << ":" << ch;
+            c << ",";
+        }
         for (int l = 0; l < zephyr::kArpLanes; ++l) { c << "|"; for (int k = 0; k < zephyr::kArpSteps; ++k) c << juce::String (arpPat.lane[l][k].load(), 3) << ","; }
         state.setProperty ("arpPat", c, nullptr);
     }
 #endif
     return state;
 }
+
+#if ZEPHYR_SYNTH
+// Arp/Seq range (v5) : un reglage d'avant est reecrit dans la nouvelle facade, le son reste identique.
+//  LATCH (ARP) -> ARP + HOLD ; TRIPLET + 1/4, 1/8, 1/16 -> 1/4T, 1/8T, 1/16T ; TRIPLET en horloge libre -> vitesse x1,5 ;
+//  RATCHET global -> chaque pas de la grille (le moteur prenait deja le plus grand des deux).
+template <class Get, class Set>
+void ZephyrAudioProcessor::normalizeArp (Get val, Set set, zephyr::ArpPattern& pat)
+{
+    if (juce::roundToInt (val ("s_arpOn", 0.f)) == 2) { set ("s_arpOn", 1.f); set ("s_hold", 1.f); }
+    if (val ("s_arpTriplet", 0.f) > 0.5f)
+    {
+        const int dv = juce::roundToInt (val ("s_arpSync", 0.f));
+        if (dv >= 5 && dv <= 7) { set ("s_arpSync", (float) (dv + 6)); set ("s_arpTriplet", 0.f); }
+        else if (dv == 0)
+        {
+            const float k = val ("s_arpRate", 0.55f) + (float) (std::log (1.5) / std::log (40.0));
+            if (k <= 1.f) { set ("s_arpRate", k); set ("s_arpTriplet", 0.f); }
+        }                                                                  // autres divisions (mesures, pointees) : TRIPLET reste, son bouton reste affiche
+    }
+    if (const int gr = juce::roundToInt (val ("s_arpRatchet", 0.f)) + 1; gr > 1)
+    {
+        for (int k = 0; k < zephyr::kArpSteps; ++k) pat.ratchet[k] = juce::jmax (pat.ratchet[k].load(), juce::jmin (4, gr));
+        set ("s_arpRatchet", 0.f);
+    }
+}
+#endif
 
 void ZephyrAudioProcessor::applyState (juce::ValueTree state)
 {
@@ -1218,6 +1271,11 @@ void ZephyrAudioProcessor::applyState (juce::ValueTree state)
                 arpPat.step[k] = juce::jlimit (0, 2, f[0].getIntValue()); arpPat.ratchet[k] = juce::jlimit (1, 4, f[1].getIntValue());
                 arpPat.seqNote[k] = f.size() > 2 ? juce::jlimit (0, 127, f[2].getIntValue()) : 60; arpPat.tie[k] = f.size() > 3 ? juce::jlimit (0, 1, f[3].getIntValue()) : 0;
                 arpPat.speed[k] = f.size() > 4 ? juce::jlimit (0, zephyr::kNumSpeeds - 1, f[4].getIntValue()) : 0;
+                if (f.size() > 5)                                                               // Chord Seq (v5)
+                {
+                    juce::StringArray cn; cn.addTokens (f[5], ".", ""); cn.removeEmptyStrings();
+                    for (int q = 0; q < zephyr::kSeqChordMax - 1 && q < cn.size(); ++q) arpPat.chordNote[k][q] = juce::jlimit (0, 127, cn[q].getIntValue());
+                }
             }
             for (int l = 0; l < zephyr::kArpLanes && l + 1 < parts.size(); ++l)
             {
@@ -1254,6 +1312,14 @@ void ZephyrAudioProcessor::applyState (juce::ValueTree state)
                     c.setProperty ("value", (float) c.getProperty ("value", 0.4) * 0.8784f, nullptr);
             }
 #if ZEPHYR_SYNTH
+    if (! state.hasProperty ("arp5"))                                      // Arp/Seq d'avant la v5 : memes reglages, ranges autrement (meme son)
+    {
+        std::map<juce::String, juce::ValueTree> pv;
+        for (auto c : state) if (c.hasProperty ("id")) pv[c.getProperty ("id").toString()] = c;
+        auto val = [&] (const char* id, float d) { auto it = pv.find (id); return it != pv.end() ? (float) it->second.getProperty ("value", d) : d; };
+        auto set = [&] (const char* id, float v) { auto it = pv.find (id); if (it != pv.end()) it->second.setProperty ("value", v, nullptr); };
+        normalizeArp (val, set, arpPat);
+    }
     if (! state.hasProperty ("zv3b"))                                      // ancien projet : memes hauteurs et meme jeu qu'avant
     {
         std::map<juce::String, juce::ValueTree> pv;
@@ -1531,6 +1597,8 @@ void ZephyrAudioProcessor::loadFactoryPreset (int i)
             if (auto* o = apvts.getRawParameterValue ("output")) setParamReal ("output", o->load() + it->second);
     }
     if (i != 0) { applyMacroSet (*this, kFactory[i].category); pruneRack(); }
+    normalizeArp ([this] (const char* id, float d) { auto* v = apvts.getRawParameterValue (id); return v != nullptr ? v->load() : d; },
+                  [this] (const char* id, float v) { setParamReal (id, v); }, arpPat);
     if (auto* ft = apvts.getRawParameterValue ("s_ftype")) if (juce::roundToInt (ft->load()) == 3)       // filtre Prophet : presets ecrits avec l'ancienne loi de resonance -> meme son
         if (auto* rs = apvts.getRawParameterValue ("s_lpfRes")) setParamReal ("s_lpfRes", zephyr::sy::proResInv (rs->load()));
 #endif

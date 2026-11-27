@@ -20,6 +20,7 @@ inline float speedMul (int code) { static const float m[kNumSpeeds] { 1.f, 2.f, 
 inline const char* speedLabel (int code) { static const char* t[kNumSpeeds] { "x1", "x2", "x4", "x1/2", "x3/2" }; return t[code < 0 || code >= kNumSpeeds ? 0 : code]; }
 constexpr int kArpDirChord = 6;             // direction CHORD : l'accord tenu rejoue en bloc a chaque pas (RANGE le fait monter d'octave en octave)
 constexpr int kMaxChordNotes = 8;
+constexpr int kSeqChordMax = 6;             // Chord Seq (v5) : jusqu'a 6 notes par pas (la note du pas + 5 notes ajoutees)
 
 // motif partage entre l'interface et le thread audio (valeurs atomiques, lecture sans verrou)
 struct ArpPattern
@@ -30,11 +31,33 @@ struct ArpPattern
     std::atomic<int> seqNote[kArpSteps];    // mode SEQ : hauteur MIDI de chaque pas
     std::atomic<int> tie[kArpSteps];        // mode SEQ : 1 = la note tient tout le pas (sans trou avec la suivante)
     std::atomic<int> speed[kArpSteps];      // vitesse du pas (v4) : code (0 = x1, defaut)
+    std::atomic<int> chordNote[kArpSteps][kSeqChordMax - 1];   // Chord Seq (v5) : notes ajoutees au pas (hauteur MIDI, -1 = aucune)
     std::atomic<int> recPos { 0 };          // mode SEQ : prochain pas a ecrire en enregistrement
     ArpPattern() { reset(); }
+    // notes du pas (la note du pas d'abord, puis l'accord) ; renvoie leur nombre (1 a kSeqChordMax)
+    int stepNotes (int i, int* out) const
+    {
+        int n = 0; out[n++] = seqNote[i].load();
+        for (int k = 0; k < kSeqChordMax - 1; ++k) { const int v = chordNote[i][k].load(); if (v >= 0) out[n++] = v; }
+        return n;
+    }
+    // ecrit un pas : notes[0] = note du pas, les suivantes = accord
+    void setStepNotes (int i, const int* notes, int n)
+    {
+        seqNote[i] = n > 0 ? notes[0] : 60;
+        for (int k = 0; k < kSeqChordMax - 1; ++k) chordNote[i][k] = k + 1 < n ? notes[k + 1] : -1;
+    }
+    void transposeStep (int i, int d)
+    {
+        int nt[kSeqChordMax]; const int n = stepNotes (i, nt);
+        int lo = 127, hi = 0; for (int k = 0; k < n; ++k) { lo = std::min (lo, nt[k]); hi = std::max (hi, nt[k]); }
+        d = std::max (-lo, std::min (127 - hi, d));                          // l'accord garde sa forme : il s'arrete au bord du clavier
+        for (int k = 0; k < n; ++k) nt[k] += d;
+        setStepNotes (i, nt, n);
+    }
     void reset()
     {
-        for (int i = 0; i < kArpSteps; ++i) { step[i] = 1; ratchet[i] = 1; seqNote[i] = 60; tie[i] = 0; speed[i] = 0; for (auto& l : lane) l[i] = 0.f; }
+        for (int i = 0; i < kArpSteps; ++i) { step[i] = 1; ratchet[i] = 1; seqNote[i] = 60; tie[i] = 0; speed[i] = 0; for (auto& c : chordNote[i]) c = -1; for (auto& l : lane) l[i] = 0.f; }
         recPos = 0;
     }
     void set (int i, int st, int rt) { step[i] = st; ratchet[i] = rt; }
@@ -205,7 +228,18 @@ public:
                     if (st > 0 && uni() < P.chance)
                     {
                         const int trans = nKeys > 0 ? lastNote() - 60 : 0;         // la touche jouee transpose le motif (do central = hauteurs d'origine)
-                        curNote = std::min (127, std::max (0, pat->seqNote[pos].load() + trans)); nCur = 1;
+                        int nt[kSeqChordMax]; const int nn = pat->stepNotes (pos, nt);    // Chord Seq (v5) : un pas peut porter un accord
+                        curNote = std::min (127, std::max (0, nt[0] + trans)); nCur = 1;
+                        if (nn > 1)
+                        {
+                            nCur = 0;
+                            for (int k = 0; k < nn; ++k)
+                            {
+                                const int v = std::min (127, std::max (0, nt[k] + trans));
+                                bool dup = false; for (int q = 0; q < nCur; ++q) dup = dup || cur[q] == v;
+                                if (! dup) cur[nCur++] = v;
+                            }
+                        }
                         const float v = nKeys > 0 ? lastVel() : 0.8f;
                         curVel = st == 2 ? std::min (1.f, v * 1.15f + 0.25f) : v;
                         ratchetN = std::max (std::max (1, std::min (4, P.ratchet)), std::min (4, pat->ratchet[pos].load()));

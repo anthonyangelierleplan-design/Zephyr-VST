@@ -1,4 +1,5 @@
 #pragma once
+#include "FoudreAccords.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "Engine.h"
 #ifndef ZEPHYR_SYNTH
@@ -121,6 +122,7 @@ public:
     int noteChan[128] = {}; bool mpeNow = false; juce::int64 sampleClock = 0, lastMultiChan = -100000000000LL; int lastNoteChan = 0; bool mpeActive = false;
     std::atomic<int> wheelShown { 0 };      // valeur de la molette (CC1) 0..127 pour l'affichage
     std::atomic<int> arpStepShown { -1 };   // pas courant de l'arpegiateur (affichage)
+    std::atomic<bool> recGroupClose { false };   // v5 : REST / TIE / BACK (interface) ferment l'accord en cours
     zephyr::ArpPattern arpPat;               // motif de l'arpegiateur / sequenceur (pas + pistes de modulation), edite par l'interface
     zephyr::Arp arp;                         // arpegiateur (version instrument)
     zephyr::Engine engine;                   // rack + patchbay vivent ici ; l'editeur les lit et les modifie
@@ -157,6 +159,10 @@ private:
     signed char lastDir[kMaxMap];
     juce::File midiMapFile() const;
     float arpStepHz (double bpm) const;
+    bool seqChord = true;                    // Chord Seq (v5) : REC regroupe les notes jouees ensemble
+    double recClock = 0.0;                   // horloge (s) pour reconnaitre les notes jouees ensemble
+    foudre::accords::GroupeurAccord recGroup;
+    template <class Get, class Set> void normalizeArp (Get, Set, zephyr::ArpPattern&);
     bool fltLevelOn = true;                  // v5 : volume des filtres egalise (faux pour un projet d'avant la v5)
     float arpRateKnob = 0.55f; int arpSyncDiv = 0; bool arpTriplet = false;
     std::vector<std::atomic<float>*> rawSyn;

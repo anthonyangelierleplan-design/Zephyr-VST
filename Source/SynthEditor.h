@@ -150,6 +150,7 @@ private:
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> sliderAtt;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>> buttonAtt;
     std::vector<LfoView*> lfoViews;
+    std::vector<std::function<void()>> refreshers;   // v5 : reglages grises selon le mode (ARP / SEQ), libelles qui suivent l'etat
     std::vector<std::shared_ptr<void>> idAttachments;
     juce::Image tex;
     ModuleUnit* envLinkUnit = nullptr; ModuleUnit* envFltUnit = nullptr; juce::Component* envLinkView = nullptr; juce::ComboBox* envLinkDst = nullptr; KnobUnit* envLinkAmt = nullptr;   // LINK des enveloppes

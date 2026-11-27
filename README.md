@@ -13,17 +13,21 @@ Dézipper et copier `Zephyr.vst3` et `Zephyr FX.vst3` dans `C:\Program Files\Com
 - **Sources** : 2 VCO SAW / PULSE / TRI / SIN, suréchantillonnés, modèle analogique ou numérique propre, phase libre ou recalée ; hard sync sans repliement, ring, **sub-oscillateur**, bruit, glide ; vibrato du VCO 1 (LFO AMT, + WHEEL, + AFTER).
 - **MIXER & DRIFT** : chaque voix dérive lentement et différemment (accord, cutoff, temps d'enveloppe).
 - **FM** : linéaire ou exponentielle, FEEDBACK, KEY SCALE, 18 rapports, 17 caractères (CHARACTER) et DICE.
-- **Filtres circuit** : MS-10, LADDER CEM3320, SEM (morph), **PROPHET** (calé sur un Prophet-6 enregistré) ; passe-haut, saturation dans la boucle, KEY TRACK, LFO 2, courbe de réponse en direct.
+- **Filtres circuit** : MS-10, LADDER CEM3320, SEM (morph), **PROPHET** (calé sur un Prophet-6 enregistré), **au même volume** à réglage égal (chacun garde son timbre) ; passe-haut, saturation dans la boucle, KEY TRACK, LFO 2, courbe de réponse en direct.
 - **POLY-MOD** façon Prophet-5 : enveloppe filtre et VCO 2 vers la fréquence ou la largeur du VCO 1, et/ou le filtre.
 - **Enveloppes** ADSR filtre et ampli (LINK : ENV 2 libre), **4 LFO** de 0,05 à 1000 Hz, **wavefolder**.
 - **Matrice 16 slots** avec un sens par routage, anneaux de modulation sur les potards, **8 macros** (CC 16 à 23).
 - **KEY ASSIGN** : POLY / MONO / UNISON (8 voix empilées) / SHARE / CHORD MEMORY, HOLD ; changer de mode ne coupe pas le son.
 
 ## Arpégiateur et séquenceur (onglet ARP)
-- Grille de 16 pas (silence / note / accent), **ratchet** et **vitesse** par pas (×1, ×2, ×4, ×½, ×3/2), ratchet global, triolets, tap tempo, swing, chance, gate.
-- 7 modes : UP, DOWN, UP-DN, PLAYED, RANDOM, CONVRG, **CHORD** ; 1 à 4 octaves. FREE (horloge libre), **THRU** (les touches jouées sonnent aussi pendant que l'arpège tourne).
+- Un seul choix **OFF / ARP / SEQ** : ARP joue les touches tenues, SEQ joue les pas mémorisés (transposés par la touche jouée). Les réglages qui ne servent pas dans le mode choisi sont grisés.
+- **HOLD** (les notes et le motif continuent quand on lâche les touches ; c'est aussi le HOLD de KEY ASSIGN), **RUN** (le séquenceur et les pistes tournent sans toucher le clavier), **THRU** (les touches jouées sonnent aussi).
+- Horloge : **DIVISION** calée sur le tempo (dont 1/4T, 1/8T, 1/16T pour les triolets) ou **HZ (free)** : horloge libre réglée par le potard HZ (grisé sinon) ; TAP TEMPO ; swing, chance, gate.
+- Grille de 16 pas (silence / note / accent), **ratchet** et **vitesse** par pas (×1, ×2, ×4, ×½, ×3/2) ; **ALL RATCHET** passe tous les pas au ratchet suivant.
+- **Chord Seq** : en SEQ, REC puis jouer ; les notes jouées ensemble (moins de 60 ms d'écart) vont dans le même pas, jusqu'à 6 notes, et le pas affiche le nom de l'accord (Fm7, D♭maj7, C/E…). Bouton **CHORD / 1 NOTE** (1 NOTE = une note par pas, comme avant). Molette sur un pas = transpose l'accord entier.
+- 7 modes d'arpège : UP, DOWN, UP-DN, PLAYED, RANDOM, CONVRG, **CHORD** ; 1 à 4 octaves.
 - Façon Mono/Poly : en **POLY**, les pas tournent sur 4 VCO (SHIFT décale chaque VCO, CLUSTER resserre en accord plaqué ou gratté) ; MONO / UNISON arpègent l'accord sur une voix.
-- **SEQ** : une note mémorisée par pas, calé sur le DAW ; **8 pistes de modulation**.
+- **SEQ** calé sur le DAW ; **8 pistes de modulation**.
 
 ## Effets (onglet EFFECTS / Zephyr FX)
 - 11 modules dans un ordre « spectre », chacun avec sa couleur et son écran animé : WARM SATURATION (tape / console / tube), EQ, FILTER, PHASER, COMPRESSOR (opto / glue), STRING ENSEMBLE (Solina), STUTTER, DELAY (tape / ice / ping-pong / digital), PLATE REVERB + SHIMMER, **CASSETTE / VHS**, STEREO WIDE.

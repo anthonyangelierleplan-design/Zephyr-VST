@@ -89,6 +89,7 @@ struct SynthParams
     int fmDir = 0, fmRatio = 0, fmWave = 0;   // FM : sens (0 VCO2>VCO1, 1 VCO1>VCO2, 2 croisee), rapport de frequence (0 libre), onde du modulateur (0 = celle du VCO)
     float fmFine = 0.f, fmAtt = 0.f, fmDec = 0.4f, fmEnvAmt = 0.f, fmVel = 0.f, fmAT = 0.f;     // FM : desaccord fin, enveloppe de profondeur, vitesse, aftertouch
     float uniDetune = 0.3f;                   // ecart de desaccord des voix empilees
+    bool fltLevel = true;                     // v5 : volume des filtres egalise (coupe pour les anciens projets : ils sonnent comme avant)
     int ftype = 0;                            // filtre passe-bas : 0 MS-10 (circuit), 1 Ladder CEM3320 (circuit), 2 SEM (circuit), 3 Prophet (SSM2040)
     int quality = 1;                          // 0 performance (filtres x2, folder/saturation x4), 1 qualite (x4/x4), 2 high fidelity (x8/x8)
     float vib = 0.f, vibWheel = 0.f, vibAT = 0.f;   // vibrato VCO1 : quantite de LFO1 sur la hauteur (+ molette, + aftertouch)
@@ -465,6 +466,55 @@ inline float proResInv (float m)                                  // inverse : r
     int i = 0; while (i < 15 && kProResLaw[i + 1] < m) ++i;
     const float d = kProResLaw[i + 1] - kProResLaw[i];
     return ((float) i + (d > 0.f ? (m - kProResLaw[i]) / d : 0.f)) / 16.f;
+}
+// ---- volume des filtres egalise (v5) : a meme cutoff et meme resonance, les 4 filtres sonnent au meme volume (+-1,5 dB) ; chacun garde son timbre.
+// Table mesuree au banc d'essai (foudre-banc, LUFS, dent de scie, enveloppe de filtre a 0) : ecart (dB) entre le filtre et la moyenne des 4.
+// Filtre ferme sous la note : pas de correction (un filtre ferme doit rester discret). Anciens projets : correction coupee (SynthParams::fltLevel).
+constexpr int kFlvX = 6, kFlvR = 6, kFlvT = 4;
+constexpr float kFlvXs[kFlvX] { -0.51f, 0.91f, 2.33f, 3.76f, 5.18f, 6.60f };   // octaves entre la coupure et la fondamentale de la note
+constexpr float kFlvRs[kFlvR] { 0.00f, 0.20f, 0.40f, 0.60f, 0.75f, 0.90f };   // resonance
+constexpr float kFlvDb[kFlvT][kFlvX][kFlvR] {
+    { {  0.00f,  0.00f,  0.00f,  0.00f,  0.00f,  0.00f },
+      {  0.15f, -2.73f, -3.40f, -4.30f, -4.30f, -4.80f },
+      { -0.25f, -2.05f, -2.67f, -3.12f, -2.78f, -3.65f },
+      { -0.47f, -1.90f, -2.62f, -3.25f, -2.48f, -4.05f },
+      { -0.50f, -1.90f, -2.60f, -3.25f, -3.10f, -5.93f },
+      { -0.55f, -1.77f, -2.48f, -3.30f, -3.48f, -3.10f } },
+    { {  0.00f,  0.00f,  0.00f,  0.00f,  0.00f,  0.00f },
+      {  0.05f,  0.27f,  1.10f,  2.20f,  2.80f,  3.30f },
+      { -0.45f,  0.95f,  1.52f,  1.67f,  2.32f,  2.65f },
+      { -0.57f,  1.20f,  1.88f,  1.95f,  2.43f,  2.65f },
+      { -0.60f,  1.30f,  2.00f,  2.15f,  2.40f,  4.18f },
+      { -0.65f,  1.33f,  2.22f,  2.40f,  2.52f,  2.70f } },
+    { {  0.00f,  0.00f,  0.00f,  0.00f,  0.00f,  0.00f },
+      { -2.75f, -1.62f, -2.00f, -2.80f, -3.20f, -2.70f },
+      { -1.35f, -1.75f, -2.38f, -3.02f, -2.98f, -1.75f },
+      { -0.88f, -1.90f, -2.53f, -3.25f, -2.98f, -1.05f },
+      { -0.80f, -1.90f, -2.60f, -3.35f, -3.40f, -1.12f },
+      { -0.65f, -1.88f, -2.68f, -3.40f, -3.78f, -3.60f } },
+    { {  0.00f,  0.00f,  0.00f,  0.00f,  0.00f,  0.00f },
+      {  2.55f,  4.08f,  4.30f,  4.90f,  4.70f,  4.20f },
+      {  2.05f,  2.85f,  3.52f,  4.48f,  3.43f,  2.75f },
+      {  1.93f,  2.60f,  3.27f,  4.55f,  3.03f,  2.45f },
+      {  1.90f,  2.50f,  3.20f,  4.45f,  4.10f,  2.88f },
+      {  1.85f,  2.33f,  2.92f,  4.30f,  4.73f,  4.00f } },
+};
+
+inline float fltLevelGain (int type, float octAboveNote, float res)
+{
+    type = std::min (kFlvT - 1, std::max (0, type));
+    auto idx = [] (const float* a, int n, float v, int& i, float& f)
+    {
+        if (v <= a[0]) { i = 0; f = 0.f; return; }
+        if (v >= a[n - 1]) { i = n - 2; f = 1.f; return; }
+        i = 0; while (i < n - 2 && v > a[i + 1]) ++i;
+        f = (v - a[i]) / (a[i + 1] - a[i]);
+    };
+    int xi, ri; float xf, rf;
+    idx (kFlvXs, kFlvX, octAboveNote, xi, xf); idx (kFlvRs, kFlvR, res, ri, rf);
+    const auto& T = kFlvDb[type];
+    const float a = T[xi][ri] + (T[xi][ri + 1] - T[xi][ri]) * rf, b = T[xi + 1][ri] + (T[xi + 1][ri + 1] - T[xi + 1][ri]) * rf;
+    return std::pow (10.f, (a + (b - a) * xf) / 20.f);
 }
 struct ProphetSsm
 {
@@ -1091,6 +1141,11 @@ private:
             c1[16] = 4.04f * m * (1.f - 0.09f * xf * xf * std::min (1.f, std::max (0.f, (1.f - m) / 0.12f)));   // le retour perd un peu de gain dans l'aigu (pic moins haut au-dessus de 7 kHz, comme le vrai) ; auto-oscillation intacte a fond
         }                                                                  // CEM3320 / SSM2040 : gain de retour (auto-oscillation au-dessus de 4)
         else if (P.ftype == 2) c1[16] = 1.9f * std::pow (1.f - res, 1.3f) + 0.03f;                                               // SEM : amortissement (potard RES)
+        {   // volume egalise des filtres (v5) : position de la coupure par rapport a la note jouee
+            const float noteHz = 440.f * std::exp2 ((v.pitch - 69.f) / 12.f);
+            const float g = P.fltLevel ? sy::fltLevelGain (P.ftype, std::log2 (std::max (1.f, lpfHz) / std::max (8.f, noteHz)), res) : 1.f;
+            c1[19] = P.ftype == 2 ? 1.f + (g - 1.f) * (1.f - morph) : g;                     // SEM : mesure en passe-bas, la correction s'efface vers notch / passe-haut
+        }
         if (! v.cInit) { for (int q = 0; q < 20; ++q) v.c0[q] = c1[q]; v.cInit = true; }
         float cd[20]; for (int q = 0; q < 20; ++q) cd[q] = (c1[q] - v.c0[q]) / (float) len;
         float cc[20]; for (int q = 0; q < 20; ++q) cc[q] = v.c0[q];
@@ -1202,6 +1257,7 @@ private:
                 const float dq = cc[16], g2 = sy::gHalfN (gLm, facFlt);
                 lp = v.osV.run (dx, facFlt, [&v, g2, dq, morph] (float u) { return v.sck.run (u, g2, dq, morph); });
             }
+            lp *= cc[19];
             const float a = P.envLink ? v.aenv.tick (fA2, fD2, fS2, fR2, fs) : v.aenv.tick (aA2, aD2, aS2, aR2, fs);   // LINK : le volume suit l'enveloppe FILTRE (au rythme audio)
             const float y = lp * a * level * v.gainV * (0.35f + 0.65f * v.vel);
             if (! (std::fabs (y) < 8.f))                                   // garde-fou : NaN, infini ou valeur folle -> on remet les etats a zero (jamais de bruit ni de blocage)

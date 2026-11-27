@@ -836,7 +836,7 @@ zephyr::SynthParams ZephyrAudioProcessor::readSynth()
     for (auto& sl : s.slot) { sl.src = n(); sl.dst = n(); sl.amt = f(); }
     s.fold = f(); s.foldSym = f();
     arpParams.on = n(); arpParams.dir = n(); arpParams.range = n();
-    s.ftype = n(); s.semMorph = f();
+    s.ftype = n(); s.semMorph = f();  s.fltLevel = fltLevelOn;
     s.assign = n(); s.hold = b() ? 1 : 0; s.uniDetune = f(); chordLearn = b();
     arpParams.assign = s.assign; arpParams.hold = s.hold != 0;
     for (int k = 4; k < kMacros; ++k) s.macro[k] = f();
@@ -1156,6 +1156,7 @@ juce::ValueTree ZephyrAudioProcessor::captureState()
     state.setProperty ("zv2", 1, nullptr); state.setProperty ("zv2c", 1, nullptr);                                 // Zephyr v2 : filtres circuit (0 MS-10, 1 CEM3320, 2 SEM, 3 Prophet), nouvelles destinations
     state.setProperty ("dirV3", 1, nullptr);                               // matrice : quantite 0..1 + sens par routage (v3)
     state.setProperty ("proP6", 1, nullptr);                               // resonance du filtre Prophet : loi du Prophet-6 (v3)
+    state.setProperty ("flt5", 1, nullptr);                                // volume des filtres egalise (v5)
     state.setProperty ("zv3b", 1, nullptr);                                // OCTAVE / TUNE du VCO 2 actifs avec un rapport FM, SEQ sans ARP (v3b)
     state.setProperty ("patch", juce::String (engine.serializePatch()), nullptr);
     state.setProperty ("rack", juce::String (engine.serializeRack()), nullptr);
@@ -1177,6 +1178,7 @@ juce::ValueTree ZephyrAudioProcessor::captureState()
 
 void ZephyrAudioProcessor::applyState (juce::ValueTree state)
 {
+    fltLevelOn = state.hasProperty ("flt5");                               // ancien projet : les filtres gardent leur volume d'avant
     engine.loadPatch (state.getProperty ("patch", "").toString().toStdString());
 #if ! ZEPHYR_SYNTH
     if (! state.hasProperty ("zv2c"))                                      // ancien patchbay : chaque source garde sa premiere destination
@@ -1489,6 +1491,7 @@ void ZephyrAudioProcessor::loadFactoryPreset (int i)
 {
     i = juce::jlimit (0, kNumFactory - 1, i);
     resetModules();
+    fltLevelOn = true;
 #if ZEPHYR_SYNTH
     arpPat.reset();
 #endif
@@ -1512,6 +1515,21 @@ void ZephyrAudioProcessor::loadFactoryPreset (int i)
         if (add != 0.f) if (auto* o = apvts.getRawParameterValue ("output")) setParamReal ("output", o->load() + add);
     }
 #if ZEPHYR_SYNTH
+    {   // v5 : volume des filtres egalise -> chaque preset d'usine garde son volume d'avant (dB, mesure au banc : accord do-sol-do, velocite 100)
+        static const std::map<juce::String, float> flvTrimDb {
+            { "Aurora Borealis", 1.9f }, { "Glass Cathedral", -3.1f }, { "Silver Lining", -3.9f }, { "Velvet Horizon", -0.5f }, { "Morning Dew", 1.4f },
+            { "Lumiere", -4.1f }, { "Polaris Chords", -3.5f }, { "Solina Dreams", 1.4f }, { "Velvet Orchestra", -0.3f }, { "Cello Light", -3.5f },
+            { "Ensemble Royal", 1.9f }, { "Silk Strings", 1.9f }, { "Tine Piano", 1.9f }, { "Wurli Gold", -2.4f }, { "Electric Grand", -2.9f },
+            { "Silk Organ", 1.9f }, { "Vibraphone Dream", 1.9f }, { "Crystal Bell", -3.2f }, { "Poly-Mod Bell", -3.3f }, { "Golden Brass", -3.4f },
+            { "Prophecy Sync", -3.9f }, { "Silver Flute", 1.7f }, { "Lumen Lead", -1.3f }, { "Velvet Horn", -0.3f }, { "Moon Ladder", -0.3f },
+            { "Deep Prophet", -2.4f }, { "Round Sub", 1.7f }, { "Starlight Arp", 1.8f }, { "Crystal Cascade", -3.3f }, { "Prism Sequence", -4.1f },
+            { "Monopoly Lights", -1.1f }, { "Ice Crystals", 1.4f }, { "Solar Wind", 1.7f }, { "Frozen Time", -3.7f }, { "Gossamer", 1.9f }, { "Halo Choir", 1.4f },
+            { "Faded Polaroid", 1.6f }, { "Worn Solina", 1.4f }, { "Filmstrip Keys", -2.7f }, { "Lullaby Sine", 1.1f }, { "VHS Bass", -0.4f },
+            { "Chord Pulse 82", -3.6f }, { "Half-Speed Memory", -3.2f }, { "Rainy Projector", 1.9f }, { "String Machine", 1.9f }, { "Tape Echo Gold", 1.9f },
+            { "Ice Hall", 1.9f }, { "Wide & Bright", 1.8f }, { "Phase Shimmer", 1.9f }, { "Opto Glow", 1.3f }, { "Cassette Memories", 1.8f } };
+        if (const auto it = flvTrimDb.find (kFactory[i].name); it != flvTrimDb.end())
+            if (auto* o = apvts.getRawParameterValue ("output")) setParamReal ("output", o->load() + it->second);
+    }
     if (i != 0) { applyMacroSet (*this, kFactory[i].category); pruneRack(); }
     if (auto* ft = apvts.getRawParameterValue ("s_ftype")) if (juce::roundToInt (ft->load()) == 3)       // filtre Prophet : presets ecrits avec l'ancienne loi de resonance -> meme son
         if (auto* rs = apvts.getRawParameterValue ("s_lpfRes")) setParamReal ("s_lpfRes", zephyr::sy::proResInv (rs->load()));

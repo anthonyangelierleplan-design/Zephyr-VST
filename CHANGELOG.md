@@ -2,6 +2,18 @@
 
 Le plus récent en haut (v2 et suivantes ; la v1 n'est pas documentée). L'état actuel du plugin est décrit dans le README.
 
+## v6 (module TAPE, calé sur un Philips D6410)
+- **Module TAPE** à la place de CASSETTE / VHS (même emplacement du rack, pas de module en plus) : un magnétophone à cassette calé sur un Philips D6410 mesuré au banc (fichier témoin enregistré sur cassette type I puis réenregistré). Code commun avec Orage dans Foudre-Core (`FoudreTape.h`).
+  - DRIVE : saturation de bande suréchantillonnée ×4 (harmonique 3 surtout) ; 50 % = passe propre du Philips (H3 -24 dB, 6 à 9 % de distorsion), 100 % = passe saturée (12 à 17 %).
+  - ALC : compression automatique d'enregistrement du Philips (attaque 60 ms, relâche 0,7 s, jusqu'à 5:1 : 19 dB d'écart à l'entrée → 4 dB à la sortie).
+  - COLOR : courbe mesurée (bruit rose) : -10 dB à 160 Hz, -24 dB à 63 Hz, +10 dB vers 8 kHz, coupure au-delà de 12 kHz (écart au Philips : 1,3 dB rms de 40 Hz à 20 kHz).
+  - WOW / FLUTTER : raies mesurées (1,4 Hz ; 6,3 - 7,2 - 9,4 Hz ; 72 Hz) + dérive aléatoire ; 50 % = Philips (0,10 % / 0,21 % rms), jusqu'à 8× / 3× au-delà.
+  - HISS : souffle à la couleur du Philips, 100 % = -40,7 dBFS ; loi au carré (50 % = -52,7 dBFS). HUM : 50 Hz et harmoniques, 10 % = Philips.
+  - MONO (le Philips est mono), MIX. Tout à zéro : sortie = entrée, retardée de 36 échantillons (0,75 ms, le son direct de MIX attend autant : pas d'effet de peigne).
+  - Vérifié : le fichier témoin passé dans TAPE réglé « Philips » donne les mêmes mesures que la vraie cassette (distorsion, courbe, pleurage, souffle, ronflement).
+- **Anciens projets** : le module reste l'ancien CASSETTE (même son), titre « CASSETTE / VHS (old project) » et bouton **→ TAPE** pour passer au nouveau moteur.
+- **Presets** : les presets cassette passent sur TAPE (volumes recalés sur ceux d'avant) ; **6 presets façon Boards of Canada** : Kodachrome Fade (Pad), Summer Camp 1979 (Lead), Pine Forest Signal (Arp), Overwound Spool (Bass), Film Society (Chord Seq : Fm7, D♭maj7, A♭, E♭), Rewind Memory (Rack FX, Philips complet).
+
 ## v5 (Chord Seq, Arp/Seq rangé, filtres au même volume)
 - **Chord Seq** : en SEQ, les notes jouées ensemble (moins de 60 ms d'écart) vont dans le même pas, jusqu'à 6 notes ; le pas affiche le nom de l'accord (Fm7, D♭maj7, C/E…) et sa basse. Bouton CHORD / 1 NOTE ; molette = transpose l'accord. Le nom des accords et le regroupement des notes viennent de Foudre-Core (`FoudreAccords.h`, commun avec Orage).
 - **Arp/Seq rangé** (doublons retirés) : un seul choix OFF / ARP / SEQ (avant : OFF-ON-LATCH puis ARP-SEQ), aussi sur le mini-module ARP de la page SYNTH ; LATCH fusionné avec HOLD ; TRIPLET retiré (les triolets sont dans DIVISION) ; FREE renommé RUN ; « Free » de DIVISION renommé HZ (free) et le potard TEMPO renommé HZ, grisé quand l'horloge suit le tempo ; potard RATCHET global remplacé par ALL RATCHET sur la grille ; réglages inutiles grisés selon le mode (MODE / OCTAVE / SHIFT / CLUSTER en SEQ, REC / REST / TIE / BACK / CHORD en ARP).

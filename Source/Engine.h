@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <string>
 #include <vector>
+#include "FoudreTape.h"            // module TAPE (v6), commun avec Orage (Foudre-Core)
 
 namespace zephyr
 {
@@ -145,7 +146,9 @@ struct Params
     float revMix = 0.f, revSize = 0.5f, revDecay = 0.6f, revPre = 0.1f, revDamp = 0.4f, revMod = 0.3f, revWidth = 1.f, revShimmer = 0.f, revLowCut = 0.1f;  bool revFreeze = false;
     bool  stutOn = false;  int stutMode = 0, stutDiv = 4, stutFeel = 0;                 // module STUTTER : engage, mode (repeat / reverse / gate / offbeat), division, feeling (droit / triolet / pointe)
     float stutLen = 0.6f, stutDecay = 0.f, stutPitch = 0.5f, stutMix = 1.f;
-    float tapeWow = 0.f, tapeFlutter = 0.f, tapeSat = 0.f, tapeAge = 0.f, tapeHiss = 0.f, tapeCrunch = 0.f, tapeMix = 1.f;   // module CASSETTE (v4)
+    float tapeWow = 0.f, tapeFlutter = 0.f, tapeSat = 0.f, tapeAge = 0.f, tapeHiss = 0.f, tapeCrunch = 0.f, tapeMix = 1.f;   // module CASSETTE (v4) : ancien moteur, pour les projets d'avant la v6
+    int tapeModel = 1;                                                                                                   // 0 CASSETTE (ancien), 1 TAPE (v6)
+    float tpDrive = 0.f, tpAlc = 0.f, tpColor = 0.f, tpWow = 0.f, tpFlutter = 0.f, tpHiss = 0.f, tpHum = 0.f, tpMix = 1.f; bool tpMono = false;   // module TAPE (v6)
     int   spaceMode = 0;                                           // v2c : 0 delay et reverb en serie, 1 en parallele (la reverb ne traite pas les echos)
 };
 
@@ -902,7 +905,7 @@ public:
     void prepare (float sampleRate)
     {
         fs = sampleRate;
-        os.prepare (fs); comp.prepare (fs); wider.prepare (fs); ens.prepare (fs); dly.prepare (fs); verb.prepare (fs); stut.prepare (fs); tape.prepare (fs); phaser.reset();
+        os.prepare (fs); comp.prepare (fs); wider.prepare (fs); ens.prepare (fs); dly.prepare (fs); verb.prepare (fs); stut.prepare (fs); tape.prepare (fs); tape2.prepare (fs); phaser.reset();
         for (auto& e : extS) e = 0.f;
         dcC = onePoleCoef (12.f, fs);
         smoothC = timeCoef (0.02f, fs);
@@ -1038,7 +1041,16 @@ private:
                 case NEnsemble: modEnsemble (in, out[nd], n, nc); break;
                 case NDelay:    modDelay (in, out[nd], n, nc); break;
                 case NVerb:     modVerb (in, out[nd], n, nc); break;
-                case NTape:     tape.process (in, out[nd], n, nc, p.tapeWow, p.tapeFlutter, p.tapeSat, p.tapeAge, p.tapeHiss, p.tapeCrunch, p.tapeMix); break;
+                case NTape:
+                    if (p.tapeModel == 1)
+                    {   // TAPE (v6) : magnetophone cale sur un Philips D6410 (Foudre-Core)
+                        foudre::tape::Reglages r; r.drive = p.tpDrive; r.alc = p.tpAlc; r.color = p.tpColor; r.wow = p.tpWow; r.flutter = p.tpFlutter;
+                        r.hiss = p.tpHiss; r.hum = p.tpHum; r.mix = p.tpMix; r.mono = p.tpMono;
+                        out[nd] = in;
+                        tape2.process (out[nd].ch[0], nc > 1 ? out[nd].ch[1] : nullptr, n, r);
+                    }
+                    else tape.process (in, out[nd], n, nc, p.tapeWow, p.tapeFlutter, p.tapeSat, p.tapeAge, p.tapeHiss, p.tapeCrunch, p.tapeMix);
+                    break;
                 default:        modOut (in, io, n, nc); break;
             }
             if (par2)                                                      // ajoute la part "wet" du premier module
@@ -1348,7 +1360,7 @@ private:
     Params p;
     float fs = 44100.f;
     Buf out[kNumNodes];
-    Oversampler4 os; Comp comp; Wider wider; Phaser phaser; Ensemble ens; MultiDelay dly; Reverb verb; Stutter stut; Tape tape;
+    Oversampler4 os; Comp comp; Wider wider; Phaser phaser; Ensemble ens; MultiDelay dly; Reverb verb; Stutter stut; Tape tape; foudre::tape::Tape tape2;
     Biquad lowB, midB, hiB; Svf hpfSvf, lpfSvf;
     Lfo lfo1, lfo2; SampleHold sh; Rng shRng; float envV = 0.f;
     float srcVal[kNumSrc] {}, cv[kNumCv] {}, extS[kExt] {}, extT[kExt] {};

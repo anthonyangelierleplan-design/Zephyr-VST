@@ -437,7 +437,8 @@ private:
 
     std::vector<std::unique_ptr<KnobUnit>> knobs;
     std::map<std::string, KnobUnit*> knobById;
-    std::vector<std::unique_ptr<juce::Component>> owned;        // selecteurs, toggles, vumeter...
+    std::vector<std::unique_ptr<juce::Component>> owned;
+    ModuleUnit* tapeUnit = nullptr;                       // v6 : module TAPE (ou ancien CASSETTE selon le projet)        // selecteurs, toggles, vumeter...
     std::vector<std::unique_ptr<juce::ComboBox>> combos;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> comboAtt;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>> buttonAtt;

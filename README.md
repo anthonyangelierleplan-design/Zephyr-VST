@@ -33,6 +33,7 @@ Dézipper et copier `Zephyr.vst3` et `Zephyr FX.vst3` dans `C:\Program Files\Com
 - 11 modules dans un ordre « spectre », chacun avec sa couleur et son écran animé : WARM SATURATION (tape / console / tube), EQ, FILTER, PHASER, COMPRESSOR (opto / glue), STRING ENSEMBLE (Solina), STUTTER, DELAY (tape / ice / ping-pong / digital), PLATE REVERB + SHIMMER, **CASSETTE / VHS**, STEREO WIDE.
 - Delay et reverb en SERIAL ou PARALLEL ; bypass = vrai A/B ; tous les modules démarrent neutres.
 - Synthé : les effets se modulent par la matrice. Zephyr FX : LFO 1, LFO 2, S&H et suiveur d'enveloppe, chacun avec sa destination.
+- **TAPE** (remplace CASSETTE / VHS) : un magnétophone à cassette calé sur un **Philips D6410** mesuré (cassette type I). DRIVE (saturation de bande, 50 % = passe propre du Philips, 100 % = passe saturée), ALC (compression automatique d'enregistrement), COLOR (grave en moins, bosse d'aigus vers 8 kHz, plus rien au-dessus de 12 kHz), WOW et FLUTTER (50 % = Philips, au-delà : bande qui tangue), HISS (souffle, 100 % = celui du Philips, premiers crans discrets), HUM (50 Hz, 10 % = Philips), MIX, MONO. Tout à zéro : le son passe sans changement. Les projets d'avant gardent l'ancien CASSETTE dans le même emplacement (bouton « → TAPE » pour changer).
 
 ## MIDI et SETTINGS
 - Carte CC de l'**Hydrasynth** par défaut (effets sur ses CC FX), MIDI learn par clic droit, reprise SCALE / PICKUP / DIRECT, lissage MIDI, courbe et réactivité de l'aftertouch.

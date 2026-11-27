@@ -11,7 +11,7 @@ pass=0; fail=0; failed=""
 for f in *.cpp; do
     grep -q '#include <juce' "$f" && continue
     n="${f%.cpp}"
-    if ! "$CXX" -O2 -std=c++17 -I../../Source "$f" -o "$out/$n" 2> "$out/$n.err"; then
+    if ! "$CXX" -O2 -std=c++17 -I../../Source -I"${FOUDRE_CORE:-../../build/_deps/foudrecore-src}/core" "$f" -o "$out/$n" 2> "$out/$n.err"; then
         echo "ECHEC (compilation) $n"; sed -n 1,20p "$out/$n.err"; fail=$((fail+1)); failed="$failed $n"; continue
     fi
     if (cd "$out" && "./$n" > "$n.log" 2>&1); then   # lance dans le dossier temporaire : les fichiers que le test ecrit n'atterrissent pas dans le depot

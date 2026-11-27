@@ -100,6 +100,16 @@ const PDef kDefs[] = {
     { "tapeHiss",  "Cassette Hiss",    0,   1,  0,    kFloat,  nullptr },
     { "tapeCrunch","Cassette Crunch",  0,   1,  0,    kFloat,  nullptr },
     { "tapeMix",   "Cassette Mix",     0,   1,  1,    kFloat,  nullptr },
+    { "tapeModel", "Tape Model",       0,   1,  1,    kChoice, "Cassette (old)|Tape" },   // v6 : 0 = ancien moteur CASSETTE (anciens projets), 1 = TAPE
+    { "tpDrive",   "Tape Drive",       0,   1,  0,    kFloat,  nullptr },          // module TAPE (v6) : 50 % = Philips D6410, passe propre
+    { "tpAlc",     "Tape ALC",         0,   1,  0,    kFloat,  nullptr },
+    { "tpColor",   "Tape Color",       0,   1,  0,    kFloat,  nullptr },
+    { "tpWow",     "Tape Wow",         0,   1,  0,    kFloat,  nullptr },
+    { "tpFlutter", "Tape Flutter",     0,   1,  0,    kFloat,  nullptr },
+    { "tpHiss",    "Tape Hiss",        0,   1,  0,    kFloat,  nullptr },
+    { "tpHum",     "Tape Hum",         0,   1,  0,    kFloat,  nullptr },
+    { "tpMix",     "Tape Mix",         0,   1,  1,    kFloat,  nullptr },
+    { "tpMono",    "Tape Mono",        0,   1,  0,    kBool,   nullptr },
 };
 constexpr int kNumDefs = (int) (sizeof (kDefs) / sizeof (kDefs[0]));
 
@@ -482,79 +492,128 @@ void xHaloChoir (ZephyrAudioProcessor& p)
     M (p, 1, MsLfo1, MdMorph, 0.5f); M (p, 2, MsPolyAT, MdLpf, 0.3f);
 }
 
-// ---- v4 : presets "cassette" (repris d'Orage v23, refaits pour le son de Zephyr : nappes larges, ensemble, chatoiement)
+// ---- v4 : presets "cassette" (repris d'Orage v23, refaits pour le son de Zephyr : nappes larges, ensemble, chatoiement). v6 : passes sur le module TAPE (Philips D6410)
 // motif de pas : '0' silence, '1' note, '2' accent ; vitesses : '0' x1, '1' x2, '2' x4, '3' x1/2, '4' x3/2 (codes zephyr::speedMul)
 void setSteps (ZephyrAudioProcessor& p, const char* st) { for (int i = 0; i < zephyr::kArpSteps && st[i] != 0; ++i) { p.arpPat.step[i] = st[i] - '0'; p.arpPat.ratchet[i] = 1; } }
 void setSpeeds (ZephyrAudioProcessor& p, const char* sp) { for (int i = 0; i < zephyr::kArpSteps; ++i) p.arpPat.speed[i] = sp[i] != 0 ? juce::jlimit (0, zephyr::kNumSpeeds - 1, sp[i] - '0') : 0; }
 void setSeq (ZephyrAudioProcessor& p, std::initializer_list<int> notes) { int i = 0; for (int n : notes) if (i < zephyr::kArpSteps) p.arpPat.seqNote[i++] = n; }
 void cFadedPolaroid (ZephyrAudioProcessor& p)
 {
-    S (p, { {"output",-9},{"s_wave1",0},{"s_wave2",0},{"s_fine2",7},{"s_lvl1",0.6f},{"s_lvl2",0.55f},{"s_ftype",0},{"s_lpf",0.52f},{"s_lpfRes",0.18f},{"s_fltEnv",0.1f},
+    S (p, { {"output",-6.2f},{"s_wave1",0},{"s_wave2",0},{"s_fine2",7},{"s_lvl1",0.6f},{"s_lvl2",0.55f},{"s_ftype",0},{"s_lpf",0.52f},{"s_lpfRes",0.18f},{"s_fltEnv",0.1f},
             {"s_aA",0.62f},{"s_aD",0.6f},{"s_aS",0.9f},{"s_aR",0.8f},{"s_drift",0.35f},{"s_l1Rate",0.1f},
             {"ensMix",0.4f},{"revMix",0.35f},{"revDecay",0.75f},{"revSize",0.7f},{"revShimmer",0.15f},
-            {"tapeWow",0.55f},{"tapeFlutter",0.2f},{"tapeSat",0.3f},{"tapeAge",0.45f},{"tapeHiss",0.18f} });
+            {"tpDrive",0.4f},{"tpAlc",0.4f},{"tpColor",0.55f},{"tpWow",0.8f},{"tpFlutter",0.45f},{"tpHiss",0.15f} });
     M (p, 1, MsLfo1, MdLpf, 0.08f); M (p, 2, MsPolyAT, MdLpf, 0.3f);
 }
 void cWornSolina (ZephyrAudioProcessor& p)
 {
-    S (p, { {"output",-8},{"s_wave1",0},{"s_wave2",0},{"s_oct2",3},{"s_fine2",9},{"s_lvl2",0.45f},{"s_ftype",0},{"s_lpf",0.6f},{"s_lpfRes",0.1f},{"s_fltEnv",0.05f},
+    S (p, { {"output",-5.7f},{"s_wave1",0},{"s_wave2",0},{"s_oct2",3},{"s_fine2",9},{"s_lvl2",0.45f},{"s_ftype",0},{"s_lpf",0.6f},{"s_lpfRes",0.1f},{"s_fltEnv",0.05f},
             {"s_aA",0.5f},{"s_aS",1.f},{"s_aR",0.7f},{"s_drift",0.3f},
             {"ensMix",0.75f},{"ensDepth",0.7f},{"ensSpeed",0.45f},{"revMix",0.35f},{"revDecay",0.7f},
-            {"tapeWow",0.45f},{"tapeFlutter",0.3f},{"tapeSat",0.25f},{"tapeAge",0.55f},{"tapeHiss",0.15f} });
+            {"tpDrive",0.35f},{"tpAlc",0.4f},{"tpColor",0.65f},{"tpWow",0.75f},{"tpFlutter",0.55f},{"tpHiss",0.12f} });
     M (p, 1, MsPolyAT, MdLpf, 0.3f);
 }
 void cFilmstripKeys (ZephyrAudioProcessor& p)
 {
-    S (p, { {"output",2},{"s_wave1",2},{"s_wave2",2},{"s_fm",0.3f},{"s_fmRatio",3},{"s_lvl1",0.7f},{"s_fmDec",0.35f},{"s_fmEnvAmt",0.45f},{"s_ftype",2},{"s_lpf",0.62f},{"s_lpfRes",0.08f},
+    S (p, { {"output",0.8f},{"s_wave1",2},{"s_wave2",2},{"s_fm",0.3f},{"s_fmRatio",3},{"s_lvl1",0.7f},{"s_fmDec",0.35f},{"s_fmEnvAmt",0.45f},{"s_ftype",2},{"s_lpf",0.62f},{"s_lpfRes",0.08f},
             {"s_aD",0.55f},{"s_aS",0.25f},{"s_aR",0.35f},{"ensMix",0.25f},{"dlyMode",0},{"dlyMix",0.15f},{"dlySync",14},{"dlyFb",0.3f},{"revMix",0.25f},{"revDecay",0.6f},
-            {"tapeWow",0.4f},{"tapeFlutter",0.25f},{"tapeSat",0.25f},{"tapeAge",0.5f},{"tapeHiss",0.12f},{"tapeCrunch",0.35f} });
+            {"tpDrive",0.35f},{"tpAlc",0.3f},{"tpColor",0.65f},{"tpWow",0.7f},{"tpFlutter",0.5f},{"tpHiss",0.12f} });
     M (p, 1, MsVel, MdFm, 0.2f);
 }
 void cLullabySine (ZephyrAudioProcessor& p)
 {
-    S (p, { {"output",-7},{"s_wave1",2},{"s_wave2",3},{"s_oct2",3},{"s_lvl1",0.8f},{"s_lvl2",0.18f},{"s_ftype",0},{"s_lpf",0.8f},{"s_lpfRes",0.05f},{"s_glide",0.12f},{"s_assign",1},
+    S (p, { {"output",-5.1f},{"s_wave1",2},{"s_wave2",3},{"s_oct2",3},{"s_lvl1",0.8f},{"s_lvl2",0.18f},{"s_ftype",0},{"s_lpf",0.8f},{"s_lpfRes",0.05f},{"s_glide",0.12f},{"s_assign",1},
             {"s_aA",0.2f},{"s_aS",0.95f},{"s_aR",0.45f},{"s_vib",0.08f},{"dlyMode",0},{"dlyMix",0.2f},{"dlySync",13},{"dlyFb",0.35f},{"dlyTone",0.35f},{"revMix",0.3f},{"revDecay",0.7f},{"revShimmer",0.2f},
-            {"tapeWow",0.7f},{"tapeFlutter",0.3f},{"tapeSat",0.2f},{"tapeAge",0.4f},{"tapeHiss",0.1f} });
+            {"tpDrive",0.3f},{"tpColor",0.5f},{"tpWow",0.85f},{"tpFlutter",0.5f},{"tpHiss",0.1f} });
 }
 void cVhsBass (ZephyrAudioProcessor& p)
 {
-    S (p, { {"output",-3},{"s_wave1",0},{"s_oct1",1},{"s_wave2",1},{"s_oct2",1},{"s_lvl2",0.45f},{"s_fine2",6},{"s_sub",0.3f},{"s_ftype",1},{"s_lpf",0.34f},{"s_lpfRes",0.3f},{"s_fltEnv",0.35f},
+    S (p, { {"output",-2.7f},{"s_wave1",0},{"s_oct1",1},{"s_wave2",1},{"s_oct2",1},{"s_lvl2",0.45f},{"s_fine2",6},{"s_sub",0.3f},{"s_ftype",1},{"s_lpf",0.34f},{"s_lpfRes",0.3f},{"s_fltEnv",0.35f},
             {"s_fD",0.3f},{"s_fS",0.3f},{"s_assign",1},{"s_glide",0.05f},{"s_aS",0.9f},{"s_aR",0.15f},
-            {"tapeWow",0.18f},{"tapeFlutter",0.1f},{"tapeSat",0.55f},{"tapeAge",0.35f},{"tapeHiss",0.06f} });
+            {"tpDrive",0.75f},{"tpAlc",0.5f},{"tpColor",0.35f},{"tpWow",0.45f},{"tpFlutter",0.35f},{"tpHiss",0.05f} });
 }
 void cChordPulse (ZephyrAudioProcessor& p)
 {
     // accord rejoue en rythme (direction CHORD) : tenir un accord, les accents et les silences font le groove
-    S (p, { {"output",-11},{"s_wave1",1},{"s_pw1",0.35f},{"s_wave2",0},{"s_lvl2",0.5f},{"s_fine2",8},{"s_ftype",2},{"s_lpf",0.5f},{"s_lpfRes",0.2f},{"s_fltEnv",0.35f},{"s_fD",0.22f},{"s_fS",0.1f},
+    S (p, { {"output",-8.5f},{"s_wave1",1},{"s_pw1",0.35f},{"s_wave2",0},{"s_lvl2",0.5f},{"s_fine2",8},{"s_ftype",2},{"s_lpf",0.5f},{"s_lpfRes",0.2f},{"s_fltEnv",0.35f},{"s_fD",0.22f},{"s_fS",0.1f},
             {"s_aD",0.3f},{"s_aS",0.2f},{"s_aR",0.15f},{"s_arpOn",1},{"s_arpMode",6},{"s_arpOct",0},{"s_arpSync",7},{"s_arpGate",0.55f},{"s_arpLen",15},
             {"ensMix",0.3f},{"dlyMode",2},{"dlyMix",0.18f},{"dlySync",14},{"dlyFb",0.3f},{"revMix",0.2f},
-            {"tapeWow",0.15f},{"tapeFlutter",0.1f},{"tapeSat",0.3f},{"tapeAge",0.2f} });
+            {"tpDrive",0.45f},{"tpColor",0.35f},{"tpWow",0.4f},{"tpFlutter",0.4f} });
     setSteps (p, "2011201020112110");
     M (p, 1, MsVel, MdFltEnv, 0.2f);
 }
 void cHalfSpeedMemory (ZephyrAudioProcessor& p)
 {
     // sequence dont certains pas vont deux fois plus vite (x2) ou deux fois plus lentement (x1/2) : le motif "boite" comme une vieille bande
-    S (p, { {"output",-8},{"s_wave1",2},{"s_wave2",1},{"s_oct2",3},{"s_lvl1",0.75f},{"s_lvl2",0.2f},{"s_pw2",0.3f},{"s_ftype",2},{"s_lpf",0.6f},{"s_lpfRes",0.15f},{"s_fltEnv",0.3f},{"s_fD",0.3f},{"s_fS",0.f},
+    S (p, { {"output",-11.5f},{"s_wave1",2},{"s_wave2",1},{"s_oct2",3},{"s_lvl1",0.75f},{"s_lvl2",0.2f},{"s_pw2",0.3f},{"s_ftype",2},{"s_lpf",0.6f},{"s_lpfRes",0.15f},{"s_fltEnv",0.3f},{"s_fD",0.3f},{"s_fS",0.f},
             {"s_aD",0.4f},{"s_aS",0.f},{"s_aR",0.35f},{"s_arpOn",1},{"s_arpType",1},{"s_arpSync",7},{"s_arpGate",0.5f},{"s_arpLen",15},
             {"dlyMode",1},{"dlyMix",0.25f},{"dlySync",14},{"dlyFb",0.35f},{"revMix",0.3f},{"revDecay",0.7f},{"revShimmer",0.2f},
-            {"tapeWow",0.5f},{"tapeFlutter",0.25f},{"tapeSat",0.2f},{"tapeAge",0.5f},{"tapeHiss",0.12f},{"tapeCrunch",0.25f} });
+            {"tpDrive",0.3f},{"tpAlc",0.3f},{"tpColor",0.6f},{"tpWow",0.75f},{"tpFlutter",0.5f},{"tpHiss",0.12f} });
     setSteps (p, "2111211121102111");
     setSeq (p, { 60, 67, 64, 71, 69, 67, 64, 62, 60, 67, 72, 71, 69, 67, 64, 67 });
     setSpeeds (p, "0011000000110003");
 }
 void cRainyProjector (ZephyrAudioProcessor& p)
 {
-    S (p, { {"output",-9},{"s_wave1",2},{"s_wave2",0},{"s_oct2",1},{"s_tune2",7},{"s_lvl1",0.6f},{"s_lvl2",0.3f},{"s_noise",0.15f},{"s_ftype",0},{"s_lpf",0.45f},{"s_lpfRes",0.3f},
+    S (p, { {"output",-3.4f},{"s_wave1",2},{"s_wave2",0},{"s_oct2",1},{"s_tune2",7},{"s_lvl1",0.6f},{"s_lvl2",0.3f},{"s_noise",0.15f},{"s_ftype",0},{"s_lpf",0.45f},{"s_lpfRes",0.3f},
             {"s_aA",0.75f},{"s_aS",0.9f},{"s_aR",0.85f},{"s_l1Rate",0.08f},{"s_drift",0.4f},
             {"ensMix",0.3f},{"revMix",0.5f},{"revDecay",0.88f},{"revSize",0.85f},{"revDamp",0.6f},{"revShimmer",0.3f},
-            {"tapeWow",0.8f},{"tapeFlutter",0.5f},{"tapeSat",0.35f},{"tapeAge",0.7f},{"tapeHiss",0.45f},{"tapeCrunch",0.2f} });
+            {"tpDrive",0.45f},{"tpAlc",0.5f},{"tpColor",0.85f},{"tpWow",0.9f},{"tpFlutter",0.65f},{"tpHiss",0.35f},{"tpHum",0.1f},{"tpMono",1} });
     M (p, 1, MsLfo1, MdLpf, 0.15f);
 }
+// ---- v6 : presets facon Boards of Canada sur le module TAPE (cale sur un Philips D6410), au son de Zephyr (ensemble, drive doux)
+void setChords (ZephyrAudioProcessor& p, std::initializer_list<std::initializer_list<int>> steps)
+{
+    int i = 0;
+    for (auto& st : steps)
+        if (i < zephyr::kArpSteps) { int nt[zephyr::kSeqChordMax]; int n = 0; for (int v : st) if (n < zephyr::kSeqChordMax) nt[n++] = v; p.arpPat.setStepNotes (i, nt, n); p.arpPat.tie[i] = 0; ++i; }
+    p.setParamReal ("s_arpLen", (float) (i - 1));
+}
+void bKodachromeFade (ZephyrAudioProcessor& p)
+{
+    S (p, { {"output",-3.9f},{"s_wave1",0},{"s_wave2",0},{"s_fine2",8},{"s_lvl1",0.6f},{"s_lvl2",0.55f},{"s_ftype",2},{"s_lpf",0.48f},{"s_lpfRes",0.15f},{"s_fltEnv",0.05f},
+            {"s_aA",0.7f},{"s_aD",0.6f},{"s_aS",0.9f},{"s_aR",0.8f},{"s_drift",0.35f},{"s_l1Rate",0.1f},
+            {"ensMix",0.45f},{"revMix",0.4f},{"revDecay",0.8f},{"revSize",0.7f},
+            {"tpDrive",0.35f},{"tpAlc",0.4f},{"tpColor",0.7f},{"tpWow",0.85f},{"tpFlutter",0.45f},{"tpHiss",0.12f} });
+    M (p, 1, MsLfo1, MdLpf, 0.1f);
+}
+void bSummerCamp (ZephyrAudioProcessor& p)
+{
+    S (p, { {"output",-4.3f},{"s_wave1",3},{"s_wave2",2},{"s_oct2",3},{"s_lvl1",0.8f},{"s_lvl2",0.2f},{"s_ftype",0},{"s_lpf",0.7f},{"s_lpfRes",0.05f},{"s_glide",0.08f},{"s_assign",1},
+            {"s_aA",0.05f},{"s_aS",0.9f},{"s_aR",0.4f},{"dlyMode",0},{"dlyMix",0.25f},{"dlySync",13},{"dlyFb",0.3f},{"dlyTone",0.3f},{"revMix",0.3f},{"revDecay",0.7f},
+            {"tpDrive",0.3f},{"tpColor",0.6f},{"tpWow",0.95f},{"tpFlutter",0.6f},{"tpHiss",0.1f} });
+}
+void bPineForest (ZephyrAudioProcessor& p)
+{
+    S (p, { {"output",-12.9f},{"s_wave1",2},{"s_wave2",0},{"s_fine2",6},{"s_lvl1",0.7f},{"s_lvl2",0.35f},{"s_ftype",2},{"s_lpf",0.55f},{"s_lpfRes",0.2f},{"s_fltEnv",0.4f},{"s_fD",0.25f},{"s_fS",0.f},
+            {"s_aD",0.35f},{"s_aS",0.f},{"s_aR",0.3f},{"s_arpOn",1},{"s_arpMode",2},{"s_arpOct",1},{"s_arpSync",7},{"s_arpGate",0.45f},
+            {"dlyMode",0},{"dlyMix",0.3f},{"dlySync",14},{"dlyFb",0.4f},{"dlyTone",0.35f},{"revMix",0.35f},{"revDecay",0.75f},
+            {"tpDrive",0.3f},{"tpAlc",0.4f},{"tpColor",0.8f},{"tpWow",0.7f},{"tpFlutter",0.5f},{"tpHiss",0.2f},{"tpMono",1} });
+}
+void bOverwoundSpool (ZephyrAudioProcessor& p)
+{
+    S (p, { {"output",-4.4f},{"s_wave1",0},{"s_oct1",1},{"s_wave2",1},{"s_oct2",1},{"s_lvl2",0.4f},{"s_fine2",5},{"s_sub",0.3f},{"s_ftype",1},{"s_lpf",0.32f},{"s_lpfRes",0.25f},{"s_fltEnv",0.3f},
+            {"s_fD",0.3f},{"s_fS",0.3f},{"s_assign",1},{"s_aS",0.9f},{"s_aR",0.15f},
+            {"tpDrive",0.85f},{"tpAlc",0.6f},{"tpColor",0.3f},{"tpWow",0.4f},{"tpFlutter",0.3f} });
+}
+void bFilmSociety (ZephyrAudioProcessor& p)
+{
+    // Chord Seq : quatre accords enregistres (Fm7, Dbmaj7, Ab, Eb), une demi-mesure chacun ; la touche jouee transpose (do 3 = tonalite d'origine)
+    S (p, { {"output",-16.2f},{"s_wave1",1},{"s_pw1",0.4f},{"s_wave2",0},{"s_fine2",7},{"s_lvl2",0.5f},{"s_ftype",2},{"s_lpf",0.45f},{"s_lpfRes",0.15f},{"s_fltEnv",0.2f},{"s_fD",0.5f},{"s_fS",0.4f},
+            {"s_aA",0.1f},{"s_aD",0.6f},{"s_aS",0.6f},{"s_aR",0.5f},{"s_arpOn",1},{"s_arpType",1},{"s_arpSync",4},{"s_arpGate",0.92f},
+            {"ensMix",0.35f},{"revMix",0.35f},{"revDecay",0.75f},
+            {"tpDrive",0.4f},{"tpAlc",0.5f},{"tpColor",0.65f},{"tpWow",0.7f},{"tpFlutter",0.5f},{"tpHiss",0.15f} });
+    setChords (p, { { 53, 56, 60, 63 }, { 49, 53, 56, 60 }, { 56, 60, 63 }, { 51, 55, 58 } });
+    setSteps (p, "1111111111111111");
+}
 #endif
+void fRewind (ZephyrAudioProcessor& p)
+{
+    S (p, { {"output",-2.9f},{"tpDrive",0.5f},{"tpAlc",1.f},{"tpColor",1.f},{"tpWow",0.5f},{"tpFlutter",0.5f},{"tpHiss",0.25f},{"tpHum",0.05f},{"tpMono",1},{"tpMix",1.f} });
+}
 void fCassette (ZephyrAudioProcessor& p)
 {
-    S (p, { {"ensMix",0.2f},{"tapeWow",0.5f},{"tapeFlutter",0.25f},{"tapeSat",0.35f},{"tapeAge",0.5f},{"tapeHiss",0.15f},{"tapeCrunch",0.1f},{"tapeMix",1.f} });
+    S (p, { {"output",-5.5f},{"ensMix",0.2f},{"tpDrive",0.5f},{"tpAlc",0.6f},{"tpColor",0.7f},{"tpWow",0.7f},{"tpFlutter",0.5f},{"tpHiss",0.15f},{"tpMix",1.f} });
 }
 #if ZEPHYR_SYNTH
 
@@ -590,11 +649,12 @@ const Factory kFactory[] = {
     { "Ice Crystals", "Texture", xIceCrystals }, { "Solar Wind", "Texture", xSolarWind }, { "Frozen Time", "Texture", xFrozenTime }, { "Gossamer", "Texture", xGossamer }, { "Halo Choir", "Texture", xHaloChoir },
     // v4 : cassette
     { "Faded Polaroid", "Pad", cFadedPolaroid }, { "Worn Solina", "Strings", cWornSolina }, { "Filmstrip Keys", "Keys / Bells", cFilmstripKeys }, { "Lullaby Sine", "Brass / Lead", cLullabySine },
-    { "VHS Bass", "Bass", cVhsBass }, { "Chord Pulse 82", "Arp / Seq", cChordPulse }, { "Half-Speed Memory", "Arp / Seq", cHalfSpeedMemory }, { "Rainy Projector", "Texture", cRainyProjector },
+    { "VHS Bass", "Bass", cVhsBass }, { "Chord Pulse 82", "Arp / Seq", cChordPulse }, { "Half-Speed Memory", "Arp / Seq", cHalfSpeedMemory }, { "Rainy Projector", "Texture", cRainyProjector }, { "Kodachrome Fade", "Pad", bKodachromeFade }, { "Summer Camp 1979", "Brass / Lead", bSummerCamp }, { "Pine Forest Signal", "Arp / Seq", bPineForest },
+    { "Overwound Spool", "Bass", bOverwoundSpool }, { "Film Society", "Arp / Seq", bFilmSociety },
 #endif
     { "String Machine", "Rack FX", fStringMachine }, { "Tape Echo Gold", "Rack FX", fTapeGold }, { "Ice Hall", "Rack FX", fIceHall },
     { "Wide & Bright", "Rack FX", fWideBright }, { "Phase Shimmer", "Rack FX", fPhaseShimmer }, { "Opto Glow", "Rack FX", fOptoGlow },
-    { "Cassette Memories", "Rack FX", fCassette },
+    { "Cassette Memories", "Rack FX", fCassette }, { "Rewind Memory", "Rack FX", fRewind },
 };
 constexpr int kNumFactory = (int) (sizeof (kFactory) / sizeof (kFactory[0]));
 }
@@ -810,6 +870,7 @@ zephyr::Params ZephyrAudioProcessor::readParams() const
     p.spaceMode = n();
     i += 4;                                                                 // destinations des sources : appliquees dans applyModRoutes()
     p.tapeWow = f();  p.tapeFlutter = f();  p.tapeSat = f();  p.tapeAge = f();  p.tapeHiss = f();  p.tapeCrunch = f();  p.tapeMix = f();
+    p.tapeModel = n();  p.tpDrive = f();  p.tpAlc = f();  p.tpColor = f();  p.tpWow = f();  p.tpFlutter = f();  p.tpHiss = f();  p.tpHum = f();  p.tpMix = f();  p.tpMono = b();
     jassert (i == kNumDefs);
     return p;
 }
@@ -1175,8 +1236,9 @@ juce::ValueTree ZephyrAudioProcessor::captureState()
     state.setProperty ("zv2", 1, nullptr); state.setProperty ("zv2c", 1, nullptr);                                 // Zephyr v2 : filtres circuit (0 MS-10, 1 CEM3320, 2 SEM, 3 Prophet), nouvelles destinations
     state.setProperty ("dirV3", 1, nullptr);                               // matrice : quantite 0..1 + sens par routage (v3)
     state.setProperty ("proP6", 1, nullptr);                               // resonance du filtre Prophet : loi du Prophet-6 (v3)
-    state.setProperty ("flt5", 1, nullptr);
-    state.setProperty ("arp5", 1, nullptr);                                // Arp/Seq range (v5) : LATCH = HOLD, triolets dans DIVISION, ratchet dans la grille                                // volume des filtres egalise (v5)
+    state.setProperty ("flt5", 1, nullptr);                                // volume des filtres egalise (v5)
+    state.setProperty ("arp5", 1, nullptr);                                // Arp/Seq range (v5) : LATCH = HOLD, triolets dans DIVISION, ratchet dans la grille
+    state.setProperty ("tape6", 1, nullptr);                               // v6 : le module du rack est TAPE (tapeModel), sinon ancien CASSETTE
     state.setProperty ("zv3b", 1, nullptr);                                // OCTAVE / TUNE du VCO 2 actifs avec un rapport FM, SEQ sans ARP (v3b)
     state.setProperty ("patch", juce::String (engine.serializePatch()), nullptr);
     state.setProperty ("rack", juce::String (engine.serializeRack()), nullptr);
@@ -1231,6 +1293,12 @@ void ZephyrAudioProcessor::normalizeArp (Get val, Set set, zephyr::ArpPattern& p
 
 void ZephyrAudioProcessor::applyState (juce::ValueTree state)
 {
+    if (! state.hasProperty ("tape6"))                                     // projet d'avant la v6 : le module du rack reste l'ancien CASSETTE (meme son)
+    {
+        bool fait = false;
+        for (auto c : state) if (c.hasProperty ("id") && c.getProperty ("id").toString() == "tapeModel") { c.setProperty ("value", 0, nullptr); fait = true; }
+        if (! fait) { juce::ValueTree d ("PARAM"); d.setProperty ("id", "tapeModel", nullptr); d.setProperty ("value", 0, nullptr); state.appendChild (d, nullptr); }
+    }
     fltLevelOn = state.hasProperty ("flt5");                               // ancien projet : les filtres gardent leur volume d'avant
     engine.loadPatch (state.getProperty ("patch", "").toString().toStdString());
 #if ! ZEPHYR_SYNTH
@@ -1527,7 +1595,9 @@ void ZephyrAudioProcessor::pruneRack()
     if (nz (v ("dlyMix"))) used.insert (NDelay);
     if (nz (v ("revMix"))) used.insert (NVerb);
     if (nz (v ("wideWidth")) || nz (v ("wideSpread")) || nz (v ("wideBass"))) used.insert (NWide);
-    if (v ("tapeMix") > 0.003f && v ("tapeWow") + v ("tapeFlutter") + v ("tapeSat") + v ("tapeAge") + v ("tapeHiss") + v ("tapeCrunch") > 0.003f) used.insert (NTape);
+    if (juce::roundToInt (v ("tapeModel")) == 1)
+    { if (v ("tpMix") > 0.003f && v ("tpDrive") + v ("tpAlc") + v ("tpColor") + v ("tpWow") + v ("tpFlutter") + v ("tpHiss") + v ("tpHum") > 0.003f) used.insert (NTape); }
+    else if (v ("tapeMix") > 0.003f && v ("tapeWow") + v ("tapeFlutter") + v ("tapeSat") + v ("tapeAge") + v ("tapeHiss") + v ("tapeCrunch") > 0.003f) used.insert (NTape);
     std::vector<int> r;
     for (int nd : { NSat, NColor, NFilter, NComp, NPhaser, NEnsemble, NStut, NDelay, NVerb, NTape, NWide }) if (used.count (nd)) r.push_back (nd);
     engine.setRack (r);

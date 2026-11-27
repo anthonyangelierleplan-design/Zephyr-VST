@@ -14,7 +14,7 @@ FetchContent_MakeAvailable(JUCE)
 # tronc commun Foudre Audio (code partage Orage / Zephyr : accords du sequenceur...). Fige sur un commit precis : le build reste reproductible.
 FetchContent_Declare(FoudreCore
     GIT_REPOSITORY https://github.com/anthonyangelierleplan-design/Foudre-core.git
-    GIT_TAG 8192015c4eb29a12d389b53021c4dd577e70aeed)
+    GIT_TAG fcce5aaf17104490cf22617248a753a9f8606a7a)
 FetchContent_MakeAvailable(FoudreCore)
 
 if(DEFINED ENV{CI})

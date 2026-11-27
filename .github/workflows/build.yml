@@ -13,8 +13,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Foudre-Core (code commun, meme commit que CMakeLists.txt)
+        run: |
+          tag=$(grep -A3 'FetchContent_Declare(FoudreCore' CMakeLists.txt | grep GIT_TAG | awk '{print $2}' | tr -d ')')
+          git clone -q https://github.com/anthonyangelierleplan-design/Foudre-core.git "$RUNNER_TEMP/foudre-core"
+          git -C "$RUNNER_TEMP/foudre-core" checkout -q "$tag"
       - name: Tests sans JUCE
         run: bash tools/tests/run.sh
+        env:
+          FOUDRE_CORE: ${{ runner.temp }}/foudre-core
 
   windows:
     needs: tests         # pas de build ni de Release si un test echoue

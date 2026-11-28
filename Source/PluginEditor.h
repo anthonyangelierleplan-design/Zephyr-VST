@@ -460,7 +460,7 @@ private:
 public:
     std::function<void()> onThemeChanged;                        // pour que la fenetre parente repeigne ses propres fonds
 private:
-    static juce::Rectangle<float> lampWindow() { return { 470.f, 6.f, 220.f, 72.f }; }
+    static juce::Rectangle<float> lampWindow() { return { 470.f, 8.f, 220.f, 64.f }; }   // v8 : 64 px de haut, la lunette s'arrete 5 px au-dessus du filet
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ZephyrEditor)
 };

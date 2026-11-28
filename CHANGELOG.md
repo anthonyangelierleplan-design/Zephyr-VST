@@ -2,6 +2,11 @@
 
 Le plus récent en haut (v2 et suivantes ; la v1 n'est pas documentée). L'état actuel du plugin est décrit dans le README.
 
+## v8 (finitions visuelles)
+- Menu du clic droit : « Réassigner MIDI » s'affichait « RÃ©assigner » (accent mal converti).
+- En-tête : l'écran du prisme et le bloc titre (sous-titre, « FOUDRE AUDIO… ») ne touchent plus le filet bleu sous l'en-tête.
+- Titres des modules : la petite barre bleue devant le nom (à moitié cachée par la vis, sans information) est retirée ; le filet sous le titre reste.
+
 ## v7 (arpèges : volume et notes plus tenues ; séquenceur, LFO animés — repris d'Orage v26)
 - **Presets Arp / Seq remontés à -27 LUFS** : ils sortaient de -35 à -44 LUFS, soit ~20 dB sous les nappes (les autres catégories : -20 à -34, médiane -24). Leurs notes sont courtes et pincées, et leur volume avait été calé comme celui d'un son tenu. Starlight Arp plafonne à -28,6 LUFS (OUTPUT au maximum, +12 dB). Crêtes entre -10 et -17 dBFS, aucun écrêtage.
 - **Arpèges moins « pluck »** : Crystal Cascade, Prism Sequence, Monopoly Lights, Chord Pulse 82 et Pine Forest Signal ont des notes plus tenues (sustain ≥ 0,6, relâche ≥ 0,45, sustain du filtre ≥ 0,25, gate ≥ 75 %), toujours à -27 LUFS. Starlight Arp et Half-Speed Memory restent pincés exprès ; Film Society était déjà tenu.

@@ -827,7 +827,7 @@ void KnobUnit::mouseDown (const juce::MouseEvent& e)
         if (mapIdx >= 0) m.addSeparator();
     }
     if (mapIdx >= 0) {
-    m.addItem (1, learning ? "Annuler l'apprentissage MIDI" : juce::String (cc >= 0 ? "R\xc3\xa9" "assigner MIDI" : "Assigner MIDI") + " (bouge un potard du clavier)" + (cc >= 0 ? "  [CC " + juce::String (cc) + "]" : juce::String()));
+    m.addItem (1, learning ? "Annuler l'apprentissage MIDI" : juce::String::fromUTF8 (cc >= 0 ? "R\xc3\xa9" "assigner MIDI" : "Assigner MIDI") + " (bouge un potard du clavier)" + (cc >= 0 ? "  [CC " + juce::String (cc) + "]" : juce::String()));
     m.addItem (2, juce::String ("Supprimer l'assignation MIDI") + (cc >= 0 ? "  [CC " + juce::String (cc) + "]" : juce::String()), cc >= 0);
     if (dflt >= 0) m.addItem (3, "Remettre le CC d'origine (" + juce::String (dflt) + ")", cc != dflt);
     m.addSeparator();
@@ -1612,11 +1612,7 @@ void ModuleUnit::paint (juce::Graphics& g)
         g.fillRoundedRectangle (jw, 3.f);
         g.setColour (juce::Colours::white.withAlpha (lit ? 0.7f : 0.25f)); g.fillRoundedRectangle (jw.getX() + 1.5f, jw.getY() + 1.5f, 2.f, 5.f, 1.f);
     }
-    else
-    {
-        g.setColour (juce::Colour (th.accent));                                          // petite barre d'accent devant le titre
-        g.fillRoundedRectangle ((float) tx - 8.f, 7.f, 3.f, 12.f, 1.5f);
-    }
+    // v8 : plus de petite barre d'accent devant le titre (a moitie cachee par la vis, sans information) : le filet sous le titre suffit
     g.setColour (look::print.withAlpha (0.95f));
     g.setFont (font (12.f).withExtraKerningFactor (0.06f));
     g.drawText (title, tx, 4, getWidth() - tx - rightRes, 18, juce::Justification::centredLeft, false);
@@ -2679,17 +2675,17 @@ void ZephyrEditor::rebuildFacade()
     // logotype : capitales larges, espacees, avec une ombre gravee
     g.setFont (font (44.f).withExtraKerningFactor (0.22f));
     g.setColour (juce::Colours::white.withAlpha (th.dark ? 0.08f : 0.7f));
-    g.drawText (titleText, 33, 4, 420, 50, juce::Justification::centredLeft, false);
+    g.drawText (titleText, 33, 1, 420, 50, juce::Justification::centredLeft, false);
     g.setColour (ink);
-    g.drawText (titleText, 32, 3, 420, 50, juce::Justification::centredLeft, false);
+    g.drawText (titleText, 32, 0, 420, 50, juce::Justification::centredLeft, false);
     g.setGradientFill (juce::ColourGradient (acc, 34.f, 0.f, acc.withAlpha (0.f), 300.f, 0.f, false));
-    g.fillRect (34, 54, 260, 2);
+    g.fillRect (34, 50, 260, 2);                                                  // v8 : bloc titre remonte : rien ne touche le filet sous l'en-tete
     g.setColour (ink.withAlpha (0.85f));
     g.setFont (font (10.5f).withExtraKerningFactor (0.12f));
-    g.drawText (subText, 34, 59, 420, 13, juce::Justification::centredLeft, false);
+    g.drawText (subText, 34, 54, 420, 13, juce::Justification::centredLeft, false);
     g.setFont (font (9.f, false).withExtraKerningFactor (0.1f));
     g.setColour (acc);
-    g.drawText ("FOUDRE AUDIO  -  LIGHT, AIR AND VOLTAGE", 34, 71, 360, 11, juce::Justification::centredLeft, false);
+    g.drawText ("FOUDRE AUDIO  -  LIGHT, AIR AND VOLTAGE", 34, 66, 360, 11, juce::Justification::centredLeft, false);
     g.setColour (ink.withAlpha (0.8f));
     g.setFont (font (9.5f));
     g.drawText ("PRESET", W - 400, 26, 80, 13, juce::Justification::centredLeft, false);

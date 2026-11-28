@@ -1635,6 +1635,17 @@ void ZephyrAudioProcessor::loadFactoryPreset (int i)
     engine.bypassMask.store (0);
     if (i == 0) engine.setRack ({ NEnsemble, NDelay, NVerb }); else engine.setDefaultRack();      // Init = ensemble + delay + reverb (mix a zero) ; tous les modules pour les autres presets
     kFactory[i].apply (*this);
+#if ZEPHYR_SYNTH
+    {   // v7 : arpeges moins « pluck » : notes plus tenues (sustain, relache, filtre, gate) ; les autres Arp / Seq restent pinces exprès.
+        // Le volume est recale plus bas (table arpTenuDb) pour garder le meme niveau ressenti.
+        static const juce::StringArray tenus { "Crystal Cascade", "Prism Sequence", "Monopoly Lights", "Chord Pulse 82", "Pine Forest Signal" };
+        if (tenus.contains (kFactory[i].name))
+        {
+            auto raise = [this] (const char* id, float v) { if (auto* r = apvts.getRawParameterValue (id)) if (r->load() < v) setParamReal (id, v); };
+            raise ("s_aS", 0.6f); raise ("s_aR", 0.45f); raise ("s_fS", 0.25f); raise ("s_arpGate", 0.75f);
+        }
+    }
+#endif
     {   // v2 : recalage de niveau (dB) mesure contre la v1 (filtres circuit) - chord tenu, meme velocite
         static const std::map<juce::String, float> trimDb {
             { "Glass Cathedral", 1.8f }, { "Polaris Chords", 1.5f }, { "Cello Light", 2.f }, { "Wurli Gold", -1.8f }, { "Electric Grand", 1.2f },
@@ -1679,6 +1690,13 @@ void ZephyrAudioProcessor::loadFactoryPreset (int i)
                   [this] (const char* id, float v) { setParamReal (id, v); }, arpPat);
     if (auto* ft = apvts.getRawParameterValue ("s_ftype")) if (juce::roundToInt (ft->load()) == 3)       // filtre Prophet : presets ecrits avec l'ancienne loi de resonance -> meme son
         if (auto* rs = apvts.getRawParameterValue ("s_lpfRes")) setParamReal ("s_lpfRes", zephyr::sy::proResInv (rs->load()));
+#endif
+#if ZEPHYR_SYNTH
+    {   // v7 : arpeges devenus tenus -> recales a -27 LUFS comme les autres Arp / Seq (meme mesure au banc)
+        static const std::map<juce::String, float> arpTenuDb { { "Crystal Cascade", -10.8f }, { "Prism Sequence", -6.8f }, { "Monopoly Lights", -3.7f }, { "Chord Pulse 82", -7.8f }, { "Pine Forest Signal", -7.8f } };
+        if (const auto it = arpTenuDb.find (kFactory[i].name); it != arpTenuDb.end())
+            if (auto* o = apvts.getRawParameterValue ("output")) setParamReal ("output", o->load() + it->second);
+    }
 #endif
     presetName = kFactory[i].name;
     presetCategory = kFactory[i].category;

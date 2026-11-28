@@ -4,15 +4,22 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "PluginEditor.h"
 
-class LfoView : public juce::Component
+class LfoView : public juce::Component, private juce::Timer
 {
 public:
-    LfoView (juce::AudioProcessorValueTreeState& a, const juce::String& waveId, const juce::String& slewId) : apvts (a), wave (waveId), slew (slewId) {}
+    // v7 : anime : un point parcourt la forme d'onde a la vraie vitesse du LFO (60 images/s, seulement quand l'ecran est visible)
+    LfoView (juce::AudioProcessorValueTreeState& a, const juce::String& waveId, const juce::String& slewId, const zephyr::Synth* s = nullptr, int index = 0)
+        : apvts (a), wave (waveId), slew (slewId), synth (s), idx (index) { if (synth != nullptr) startTimerHz (60); }
+    ~LfoView() override { stopTimer(); }
     void paint (juce::Graphics&) override;
 private:
+    void timerCallback() override { if (isShowing()) repaint(); }
     float value (const juce::String& id) const;
+    float shapeAt (float ph, int w, float sl) const;
     juce::AudioProcessorValueTreeState& apvts;
     juce::String wave, slew;
+    const zephyr::Synth* synth; int idx;
+    float trail[10] {}; int trailN = 0;                       // positions precedentes (trainee qui s'efface)
 };
 
 

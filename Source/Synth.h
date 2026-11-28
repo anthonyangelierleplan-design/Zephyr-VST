@@ -672,6 +672,7 @@ public:
         else if (oldHold && ! P.hold) dropLatched();
     }
     void setChord (const int* iv, int n) { chordN = std::max (0, std::min (6, n)); for (int i = 0; i < chordN; ++i) chord[i] = iv[i]; }
+    std::atomic<float> shownPh[kLfos] {}, shownSh[kLfos] {}; std::atomic<bool> shownLive[kLfos] {};   // v7 : LFO pour l'affichage (ecrit par l'audio, lu par l'interface)
     float lfoLive (int i) const { return lfoWave (gPhase[i], P.lfo[i].wave, gCur[i]); }   // valeur courante d'un LFO global (affichage des anneaux)
     float lfoHz (int i) const { return hz (i); }                       // cadence de l'arpegiateur = LFO 2
     void setHost (double bpmIn) { bpm = bpmIn > 20.0 ? (float) bpmIn : 120.f; }
@@ -782,6 +783,18 @@ public:
             }
             for (auto& v : voices)
                 if (v.active) renderVoice (v, L + pos, R + pos, len, lfoHz, dt);
+        }
+        for (int i = 0; i < kLfos; ++i)                                         // v7 : position des LFO pour l'affichage anime (RETRIG : la voix la plus recente)
+        {
+            float ph = gPhase[i], sh = gCur[i]; bool live = true;
+            if (P.lfo[i].trig)
+            {
+                const Voice* nv = nullptr;
+                for (const auto& v : voices) if (v.active && (nv == nullptr || v.age > nv->age)) nv = &v;
+                live = nv != nullptr;
+                if (live) { ph = nv->lph[i]; sh = nv->lcur[i]; }
+            }
+            shownPh[i].store (ph, std::memory_order_relaxed); shownSh[i].store (sh, std::memory_order_relaxed); shownLive[i].store (live, std::memory_order_relaxed);
         }
         const float dcC = 1.f - std::exp (-6.2831853f * 6.f / fs);                              // coupe-continu a 6 Hz : la saturation asymetrique ne laisse plus de composante continue en sortie
         // bus de sortie : limiteur de crete (gain lisse) au lieu d'une saturation instantanee. Une tanh sur la SOMME des voix

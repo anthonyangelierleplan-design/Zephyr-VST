@@ -75,6 +75,17 @@ float LfoView::value (const juce::String& id) const
     return 0.f;
 }
 
+float LfoView::shapeAt (float ph, int w, float sl) const
+{
+    if (w != 4) return zephyr::Synth::lfoWave (ph, w, 0.f);
+    static const float steps[4] { 0.55f, -0.7f, 0.25f, -0.25f };                // valeurs types d'un S&H, un cycle = 4 marches
+    const float pos = ph * 4.f;
+    const int k = juce::jlimit (0, 3, (int) pos);
+    const float frac = pos - (float) k, r = juce::jmax (0.001f, sl * 0.9f);
+    const float t = juce::jlimit (0.f, 1.f, (frac - (1.f - r)) / r);
+    return steps[k] + (steps[(k + 1) % 4] - steps[k]) * t * t * (3.f - 2.f * t);
+}
+
 void LfoView::paint (juce::Graphics& g)
 {
     const auto b = getLocalBounds().toFloat();
@@ -85,30 +96,36 @@ void LfoView::paint (juce::Graphics& g)
     for (int i = 1; i < 4; ++i) g.drawVerticalLine ((int) (b.getX() + b.getWidth() * (float) i / 4.f), b.getY() + 2.f, b.getBottom() - 2.f);
     const int w = juce::roundToInt (value (wave));
     const float sl = value (slew);
-    static const float steps[4] { 0.55f, -0.7f, 0.25f, -0.25f };                // valeurs types d'un S&H, un cycle = 4 marches
+    auto yOf = [&] (float v) { return b.getCentreY() - v * (b.getHeight() * 0.38f); };
     juce::Path p;
     const int n = (int) b.getWidth();
     for (int i = 0; i <= n; ++i)
     {
         const float ph = (float) i / (float) n * 0.9999f;
-        float y;
-        if (w == 4)
-        {
-            const float pos = ph * 4.f;
-            const int k = juce::jlimit (0, 3, (int) pos);
-            const float frac = pos - (float) k, r = juce::jmax (0.001f, sl * 0.9f);
-            const float t = juce::jlimit (0.f, 1.f, (frac - (1.f - r)) / r);
-            y = steps[k] + (steps[(k + 1) % 4] - steps[k]) * t * t * (3.f - 2.f * t);
-        }
-        else
-            y = zephyr::Synth::lfoWave (ph, w, 0.f);
-        const float px = b.getX() + (float) i, py = b.getCentreY() - y * (b.getHeight() * 0.38f);
+        const float px = b.getX() + (float) i, py = yOf (shapeAt (ph, w, sl));
         if (i == 0) p.startNewSubPath (px, py); else p.lineTo (px, py);
     }
     g.setColour (juce::Colour (0xffff7a1a).withAlpha (0.3f));
     g.strokePath (p, juce::PathStrokeType (4.f));
     g.setColour (juce::Colour (0xffffb05a));
     g.strokePath (p, juce::PathStrokeType (1.6f));
+    if (synth != nullptr && synth->shownLive[idx].load (std::memory_order_relaxed))
+    {   // v7 : position du LFO : trainee + point lumineux + trait vertical discret
+        const float ph = juce::jlimit (0.f, 0.9999f, synth->shownPh[idx].load (std::memory_order_relaxed));
+        for (int k = juce::jmin (trailN, 9); k > 0; --k) trail[k] = trail[k - 1];
+        trail[0] = ph; trailN = juce::jmin (trailN + 1, 10);
+        for (int k = trailN - 1; k >= 1; --k)
+        {
+            const float tp = trail[k], a = 0.35f * (1.f - (float) k / 10.f);
+            g.setColour (juce::Colour (0xffffd29a).withAlpha (a));
+            g.fillEllipse (b.getX() + tp * b.getWidth() - 2.5f, yOf (shapeAt (tp, w, sl)) - 2.5f, 5.f, 5.f);
+        }
+        const float x = b.getX() + ph * b.getWidth(), y = yOf (shapeAt (ph, w, sl));
+        g.setColour (juce::Colour (0xffffb05a).withAlpha (0.25f)); g.drawVerticalLine ((int) x, b.getY() + 2.f, b.getBottom() - 2.f);
+        g.setColour (juce::Colour (0xffff7a1a).withAlpha (0.45f)); g.fillEllipse (x - 7.f, y - 7.f, 14.f, 14.f);
+        g.setColour (juce::Colours::white); g.fillEllipse (x - 3.5f, y - 3.5f, 7.f, 7.f);
+    }
+    else trailN = 0;
     g.setColour (juce::Colour (0xffe9e5d8).withAlpha (0.6f));
     g.drawRect (b, 1.2f);
 }
@@ -900,7 +917,7 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
             st.fade  = knob (*u, (pre + "Fade").toRawUTF8(), "FADE-IN");
             st.sync  = combo (*u, (pre + "Sync").toRawUTF8());
             st.trig  = toggle (*u, (pre + "Trig").toRawUTF8(), "RETRIG");
-            auto view = std::make_unique<LfoView> (proc.apvts, pre + "Wave", pre + "Slew");
+            auto view = std::make_unique<LfoView> (proc.apvts, pre + "Wave", pre + "Slew", &proc.synth, i - 1);
             st.view = view.get(); u->addAndMakeVisible (*view); lfoViews.push_back (st.view); owned.push_back (std::move (view));
             sets->push_back (st);
         }

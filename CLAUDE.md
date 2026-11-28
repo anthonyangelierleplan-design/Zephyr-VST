@@ -39,16 +39,15 @@ Identité à garder : sons riches, luxuriants, vintage mais lumineux et subtils 
 - Orage et Zephyr ont divergé : une fonction commune se reporte **à la main**, en gardant l'identité de chacun (ex. Orage v23 → Zephyr v4). Projet décidé : un dépôt commun **Foudre-Core** (ergonomie, thèmes, arpégiateur / séquenceur, modules identiques comme la cassette) ; les modules qui font la couleur de chaque synthé restent dans leur dépôt.
 
 ## Où on en est (28 nov. 2026)
-- En test : **v7** sur la branche `v7-arp-niveau` (presets Arp / Seq remontés à -27 LUFS), pas encore fusionnée.
-- Dernière version fusionnée sur `main` (27 nov. 2026) : **v6** (module TAPE calé sur un Philips D6410, 6 presets façon Boards of Canada), qui inclut la **v5** (Chord Seq, Arp/Seq rangé, filtres au même volume).
+- Dernière version fusionnée sur `main` (28 nov. 2026) : **v7** (presets Arp / Seq à -27 LUFS, arpèges plus tenus, séquenceur CTRL+D / CTRL+Z, grille NOTE STEPS lisible, LFO animés).
+- Avant (27 nov. 2026) : **v6** (module TAPE calé sur un Philips D6410, 6 presets façon Boards of Canada), qui inclut la **v5** (Chord Seq, Arp/Seq rangé, filtres au même volume).
   Code partagé : `FoudreAccords.h` et `FoudreTape.h` de **Foudre-Core** (FetchContent, figé sur un commit dans `CMakeLists.txt`). Banc d'essai : `C:\Dev\Foudre-Core\build\banc\FoudreBanc_artefacts\Release\foudre-banc.exe` ; captures de l'interface : `foudre-banc capture <vst3> --onglet 1` (le plugin lit `FOUDRE_ONGLET`).
 - Piège du banc : `--programme N` = index dans `kFactory`, et l'index 0 est **Init** (Aurora Borealis = 1). Arp / Seq = 29 à 32, 43, 44, 48, 50.
 - CMake n'est pas dans le PATH : `C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe`. Pas de g++ local : `tools/tests/run.sh` tourne sur GitHub.
+- À vérifier par lui : CTRL+D / CTRL+Z reçus par Ableton (sinon : petits boutons UNDO / REDO / DUP). L'écran des LFO reste orange (couleur codée en dur, d'avant la v7).
 - Ses goûts : adore les 11 modules et l'arpégiateur / séquenceur ; joue en thème MINUIT.
 - La grille de stabilité signale 28 réglages, tous PROPHET à résonance ≥ 80 % : auto-oscillation voulue depuis le calage Prophet-6 (voir README), pas un bug.
 - Idées discutées, pas commencées (lui demander par quoi commencer) :
-  - onde des LFO animée à leur vitesse sur la page SYNTH (~60 images/s, ne redessiner que l'écran du LFO) ;
   - thèmes clairs (ALUMINIUM, CREME) : plus de contraste ;
   - son un peu « mat » comparé à l'Hydrasynth : mesurer le spectre avant de corriger, éventuellement un réglage de brillance neutre par défaut ;
-  - banc d'essai local : un hôte sans Ableton qui charge le `.vst3`, joue du MIDI, enregistre en WAV et compare à un enregistrement de référence ;
   - dépôt Foudre-Core (voir plus haut).

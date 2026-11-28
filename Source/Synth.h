@@ -1,6 +1,7 @@
 // Zephyr synth engine : 12 voix (base Orage v20b) : 2 VCO (saw / pulse / tri / sine) + sub, hard sync, FM, ring, derive analogique (DRIFT),
 // poly-mod facon Prophet, filtres circuit MS-10 / Ladder CEM3320 / SEM + PROPHET (SSM2040), 4 LFO, 8 macros, matrice. Aucune dependance JUCE.
 #pragma once
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <algorithm>

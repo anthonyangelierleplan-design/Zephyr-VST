@@ -46,7 +46,7 @@ Dézipper et copier `Zephyr.vst3` et `Zephyr FX.vst3` dans `C:\Program Files\Com
 ## Design
 - Trois thèmes : ALUMINIUM (défaut), CREME, MINUIT. Plaques vissées, flancs en bois, prisme dans l'en-tête (un clic : oscilloscope).
 - Fenêtre redimensionnable, cran magnétique au zéro des potards, potards crantés pour les choix (MODE, OCTAVE, RATCHET…).
-- 52 presets d'usine + Init (Zephyr FX : 7 presets d'effets + Init).
+- 57 presets d'usine + Init, dont une catégorie **Organ** (Velvet Drawbars, Chapel Glow, Combo '66, Gospel Swirl, Tape Harmonium) (Zephyr FX : 7 presets d'effets + Init).
 
 ## Pour aller plus loin
 - `CHANGELOG.md` : ce qui a changé à chaque version, avec les mesures.

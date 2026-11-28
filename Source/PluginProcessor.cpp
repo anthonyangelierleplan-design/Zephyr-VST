@@ -219,7 +219,7 @@ void addSynthParams (juce::AudioProcessorValueTreeState::ParameterLayout& l)
 
 // ---------------------------------------------------------------- presets d'usine
 struct Factory { const char* name; const char* category; void (*apply) (ZephyrAudioProcessor&); };
-const char* const kCategories[] = { "Pad", "Strings", "Keys / Bells", "Brass / Lead", "Bass", "Arp / Seq", "Texture", "Rack FX" };
+const char* const kCategories[] = { "Pad", "Strings", "Keys / Bells", "Organ", "Brass / Lead", "Bass", "Arp / Seq", "Texture", "Rack FX" };
 
 using KV = std::pair<const char*, float>;
 // Les presets d'usine sont ecrits dans les unites de la v1 : filtres 0 SEM / 1 Ladder / 2 Prophet (-> circuits 2 / 1 / 3, ou 10 = MS-10),
@@ -606,6 +606,42 @@ void bFilmSociety (ZephyrAudioProcessor& p)
     setChords (p, { { 53, 56, 60, 63 }, { 49, 53, 56, 60 }, { 56, 60, 63 }, { 51, 55, 58 } });
     setSteps (p, "1111111111111111");
 }
+
+// ---- ORGAN (v8) : orgues construits avec les 2 VCO + SUB (tirettes 16' 8' 4'), cabine tournante par phaser + ensemble (molette = cabine rapide),
+// clic de percussion par l'enveloppe du filtre ; recales au banc sur les Keys / Bells
+void oVelvetDrawbars (ZephyrAudioProcessor& p)
+{   // tirettes rondes 16' 8' 4', cabine lente, un rien de lampe
+    S (p, { {"output",-11.9f},{"s_wave1",3},{"s_wave2",3},{"s_oct2",3},{"s_lvl1",0.75f},{"s_lvl2",0.5f},{"s_sub",0.45f},{"s_ftype",0},{"s_lpf",0.8f},{"s_key",1.f},
+            {"s_fltEnv",0.15f},{"s_fA",0.f},{"s_fD",0.1f},{"s_fS",0.f},{"s_aA",0.f},{"s_aD",0.3f},{"s_aS",1.f},{"s_aR",0.14f},{"s_drift",0.08f},
+            {"phMix",0.3f},{"phRate",0.35f},{"phDepth",0.45f},{"ensMix",0.35f},{"ensSpeed",0.6f},{"satMode",2},{"satDrive",0.15f},{"revMix",0.2f} });
+    M (p, 1, MsWheel, MdFxPhRate, 0.6f); M (p, 2, MsPolyAT, MdSat, 0.4f);
+}
+void oChapelGlow (ZephyrAudioProcessor& p)
+{   // petit orgue de chapelle : scie douce + impulsion a l'octave, attaque d'air, longue reverb lumineuse
+    S (p, { {"output",-8.6f},{"s_wave1",0},{"s_wave2",1},{"s_oct2",3},{"s_pw2",0.4f},{"s_lvl1",0.6f},{"s_lvl2",0.35f},{"s_sub",0.3f},{"s_ftype",0},{"s_lpf",0.55f},{"s_key",0.8f},
+            {"s_fltEnv",0.1f},{"s_fA",0.3f},{"s_fD",0.6f},{"s_fS",0.6f},{"s_aA",0.25f},{"s_aD",0.5f},{"s_aS",1.f},{"s_aR",0.5f},{"s_drift",0.1f},
+            {"ensMix",0.25f},{"ensSpeed",0.3f},{"revMix",0.4f},{"revDecay",0.85f},{"revSize",0.9f} });
+}
+void oCombo66 (ZephyrAudioProcessor& p)
+{   // orgue a transistors : impulsions fines, vibrato, phaser leger
+    S (p, { {"output",-8.9f},{"s_wave1",1},{"s_pw1",0.22f},{"s_wave2",1},{"s_pw2",0.3f},{"s_oct2",3},{"s_lvl1",0.7f},{"s_lvl2",0.4f},{"s_ftype",1},{"s_lpf",0.8f},{"s_key",1.f},
+            {"s_fltEnv",0.f},{"s_aA",0.f},{"s_aD",0.3f},{"s_aS",1.f},{"s_aR",0.08f},{"s_l1Rate",0.47f},
+            {"phMix",0.2f},{"phRate",0.25f},{"revMix",0.15f} });
+    M (p, 1, MsLfo1, MdPitch, 0.015f); M (p, 2, MsWheel, MdPitch, 0.02f);
+}
+void oGospelSwirl (ZephyrAudioProcessor& p)
+{   // 8' + quinte, percussion marquee, cabine qui accelere a la molette, lampe poussee a l'aftertouch
+    S (p, { {"output",-9.4f},{"s_wave1",3},{"s_wave2",2},{"s_oct2",3},{"s_tune2",7},{"s_lvl1",0.8f},{"s_lvl2",0.35f},{"s_sub",0.25f},{"s_ftype",0},{"s_lpf",0.75f},{"s_key",1.f},
+            {"s_fltEnv",0.25f},{"s_fA",0.f},{"s_fD",0.14f},{"s_fS",0.f},{"s_aA",0.f},{"s_aD",0.3f},{"s_aS",1.f},{"s_aR",0.12f},
+            {"phMix",0.4f},{"phRate",0.5f},{"phDepth",0.5f},{"ensMix",0.25f},{"ensSpeed",0.8f},{"satMode",2},{"satDrive",0.25f},{"revMix",0.2f} });
+    M (p, 1, MsWheel, MdFxPhRate, 0.6f); M (p, 2, MsPolyAT, MdSat, 0.5f);
+}
+void oTapeHarmonium (ZephyrAudioProcessor& p)
+{   // harmonium a anches sur cassette : triangle + impulsion, souffle et pleurage du TAPE
+    S (p, { {"output",-7.8f},{"s_wave1",2},{"s_wave2",1},{"s_pw2",0.35f},{"s_fine2",6},{"s_lvl1",0.7f},{"s_lvl2",0.4f},{"s_ftype",0},{"s_lpf",0.6f},{"s_key",0.7f},
+            {"s_fltEnv",0.f},{"s_aA",0.14f},{"s_aD",0.4f},{"s_aS",1.f},{"s_aR",0.3f},{"s_noise",0.03f},{"s_drift",0.15f},
+            {"tpDrive",0.35f},{"tpColor",0.5f},{"tpWow",0.35f},{"tpFlutter",0.25f},{"tpHiss",0.12f},{"revMix",0.25f} });
+}
 #endif
 void fRewind (ZephyrAudioProcessor& p)
 {
@@ -629,7 +665,7 @@ void applyMacroSet (ZephyrAudioProcessor& p, const juce::String& cat)
     static const MacroDef arp[8]   { { MdLpf, 0.5f }, { MdReso, 0.4f }, { MdDlyMix, 0.5f }, { MdDlyFb, 0.4f }, { MdRevMix, 0.4f }, { MdFltEnv, 0.5f }, { MdSat, 0.4f }, { MdFxPhMix, 0.4f } };
     static const MacroDef tex[8]   { { MdLpf, 0.5f }, { MdNoise, 0.5f }, { MdFm, 0.5f }, { MdRing, 0.5f }, { MdRevMix, 0.5f }, { MdDlyMix, 0.5f }, { MdFxPhMix, 0.5f }, { MdDrift, 0.5f } };
     static const MacroDef rack[8]  { { MdLpf, 0.5f }, { MdRevMix, 0.4f }, { MdDlyMix, 0.4f }, { MdFxDrive, 0.4f }, { MdFxEnsMix, 0.4f }, { MdFxPhMix, 0.4f }, { MdFxWidth, 0.4f }, { MdRevDecay, 0.3f } };
-    const MacroDef* d = cat == "Pad" ? pad : cat == "Strings" ? str : cat == "Keys / Bells" ? keys : cat == "Brass / Lead" ? lead
+    const MacroDef* d = cat == "Pad" ? pad : cat == "Strings" ? str : (cat == "Keys / Bells" || cat == "Organ") ? keys : cat == "Brass / Lead" ? lead
                       : cat == "Bass" ? bass : cat == "Arp / Seq" ? arp : cat == "Texture" ? tex : rack;
     for (int k = 0; k < 8; ++k) M (p, 5 + k, macroSrc (k), d[k].dst, d[k].amt);
 }
@@ -651,6 +687,9 @@ const Factory kFactory[] = {
     { "Faded Polaroid", "Pad", cFadedPolaroid }, { "Worn Solina", "Strings", cWornSolina }, { "Filmstrip Keys", "Keys / Bells", cFilmstripKeys }, { "Lullaby Sine", "Brass / Lead", cLullabySine },
     { "VHS Bass", "Bass", cVhsBass }, { "Chord Pulse 82", "Arp / Seq", cChordPulse }, { "Half-Speed Memory", "Arp / Seq", cHalfSpeedMemory }, { "Rainy Projector", "Texture", cRainyProjector }, { "Kodachrome Fade", "Pad", bKodachromeFade }, { "Summer Camp 1979", "Brass / Lead", bSummerCamp }, { "Pine Forest Signal", "Arp / Seq", bPineForest },
     { "Overwound Spool", "Bass", bOverwoundSpool }, { "Film Society", "Arp / Seq", bFilmSociety },
+    // v8 : orgues
+    { "Velvet Drawbars", "Organ", oVelvetDrawbars }, { "Chapel Glow", "Organ", oChapelGlow }, { "Combo '66", "Organ", oCombo66 },
+    { "Gospel Swirl", "Organ", oGospelSwirl }, { "Tape Harmonium", "Organ", oTapeHarmonium },
 #endif
     { "String Machine", "Rack FX", fStringMachine }, { "Tape Echo Gold", "Rack FX", fTapeGold }, { "Ice Hall", "Rack FX", fIceHall },
     { "Wide & Bright", "Rack FX", fWideBright }, { "Phase Shimmer", "Rack FX", fPhaseShimmer }, { "Opto Glow", "Rack FX", fOptoGlow },

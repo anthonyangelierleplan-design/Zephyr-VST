@@ -2,7 +2,8 @@
 
 Le plus récent en haut (v2 et suivantes ; la v1 n'est pas documentée). L'état actuel du plugin est décrit dans le README.
 
-## v8 (finitions visuelles)
+## v8 (orgues, finitions visuelles)
+- **Nouvelle catégorie Organ** (5 presets, ajoutés après les synthés : les numéros de Program Change existants ne bougent pas) : Velvet Drawbars (16' 8' 4' ronds, cabine lente), Chapel Glow (petit orgue de chapelle, longue reverb), Combo '66 (orgue à transistors, vibrato), Gospel Swirl (8' + quinte, percussion, lampe à l'aftertouch), Tape Harmonium (harmonium sur cassette TAPE). Cabine par phaser + ensemble, **molette = cabine rapide**. Volumes calés au banc sur les Keys / Bells, aucun clic ni écrêtage. Silk Organ reste dans Keys / Bells.
 - Menu du clic droit : « Réassigner MIDI » s'affichait « RÃ©assigner » (accent mal converti).
 - En-tête : l'écran du prisme et le bloc titre (sous-titre, « FOUDRE AUDIO… ») ne touchent plus le filet bleu sous l'en-tête.
 - Titres des modules : la petite barre bleue devant le nom (à moitié cachée par la vis, sans information) est retirée ; le filet sous le titre reste.

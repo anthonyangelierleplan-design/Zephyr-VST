@@ -39,10 +39,10 @@ Identité à garder : sons riches, luxuriants, vintage mais lumineux et subtils 
 - Orage et Zephyr ont divergé : une fonction commune se reporte **à la main**, en gardant l'identité de chacun (ex. Orage v23 → Zephyr v4). Projet décidé : un dépôt commun **Foudre-Core** (ergonomie, thèmes, arpégiateur / séquenceur, modules identiques comme la cassette) ; les modules qui font la couleur de chaque synthé restent dans leur dépôt.
 
 ## Où on en est (28 nov. 2026)
-- Dernière version fusionnée sur `main` (28 nov. 2026) : **v7** (presets Arp / Seq à -27 LUFS, arpèges plus tenus, séquenceur CTRL+D / CTRL+Z, grille NOTE STEPS lisible, LFO animés).
+- Dernière version fusionnée sur `main` (28 nov. 2026) : **v8** (catégorie Organ, 5 presets ; en-tête sans chevauchement, plus de barre bleue devant les titres, accent du menu clic droit). Avant : **v7** (presets Arp / Seq à -27 LUFS, arpèges plus tenus, séquenceur CTRL+D / CTRL+Z, grille NOTE STEPS lisible, LFO animés).
 - Avant (27 nov. 2026) : **v6** (module TAPE calé sur un Philips D6410, 6 presets façon Boards of Canada), qui inclut la **v5** (Chord Seq, Arp/Seq rangé, filtres au même volume).
   Code partagé : `FoudreAccords.h` et `FoudreTape.h` de **Foudre-Core** (FetchContent, figé sur un commit dans `CMakeLists.txt`). Banc d'essai : `C:\Dev\Foudre-Core\build\banc\FoudreBanc_artefacts\Release\foudre-banc.exe` ; captures de l'interface : `foudre-banc capture <vst3> --onglet 1` (le plugin lit `FOUDRE_ONGLET`).
-- Piège du banc : `--programme N` = index dans `kFactory`, et l'index 0 est **Init** (Aurora Borealis = 1). Arp / Seq = 29 à 32, 43, 44, 48, 50.
+- Piège du banc : `--programme N` = index dans `kFactory`, et l'index 0 est **Init** (Aurora Borealis = 1). Arp / Seq = 29 à 32, 43, 44, 48, 50 ; Organ = 51 à 55.
 - CMake n'est pas dans le PATH : `C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe`. Pas de g++ local : `tools/tests/run.sh` tourne sur GitHub ; en local, compiler chaque test sans JUCE avec `cl /std:c++17 /O2 /EHsc /D_USE_MATH_DEFINES /I..\..\Source /I<build>\_depsoudrecore-src\core` apres `vcvars64.bat` (Visual Studio 18). Piege : MSVC pardonne un `#include` manquant (ex. `<atomic>`) que g++ refuse.
 - À vérifier par lui : CTRL+D / CTRL+Z reçus par Ableton (sinon : petits boutons UNDO / REDO / DUP). L'écran des LFO reste orange (couleur codée en dur, d'avant la v7).
 - Ses goûts : adore les 11 modules et l'arpégiateur / séquenceur ; joue en thème MINUIT.

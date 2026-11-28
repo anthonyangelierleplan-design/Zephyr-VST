@@ -124,6 +124,7 @@ public:
     std::atomic<int> arpStepShown { -1 };   // pas courant de l'arpegiateur (affichage)
     std::atomic<bool> recGroupClose { false };   // v5 : REST / TIE / BACK (interface) ferment l'accord en cours
     zephyr::ArpPattern arpPat;               // motif de l'arpegiateur / sequenceur (pas + pistes de modulation), edite par l'interface
+    zephyr::ArpHistory arpHistory;           // v7 : CTRL+Z / CTRL+Y du motif (thread de l'interface ; garde l'historique tant que le plugin est charge)
     zephyr::Arp arp;                         // arpegiateur (version instrument)
     zephyr::Engine engine;                   // rack + patchbay vivent ici ; l'editeur les lit et les modifie
     juce::String presetName { "Init" }, presetCategory;

@@ -8,6 +8,7 @@
 #pragma once
 #include <algorithm>
 #include <atomic>
+#include <vector>
 #include <cmath>
 #include <cstdint>
 
@@ -61,6 +62,30 @@ struct ArpPattern
         recPos = 0;
     }
     void set (int i, int st, int rt) { step[i] = st; ratchet[i] = rt; }
+    // v7 : copie d'un pas complet (CTRL+D, CTRL+Z)
+    struct StepData { int step = 1, ratchet = 1, note = 60, tie = 0, speed = 0; int chord[kSeqChordMax - 1]; float lane[kArpLanes]; };
+    StepData get (int i) const
+    {
+        StepData d; d.step = step[i].load(); d.ratchet = ratchet[i].load(); d.note = seqNote[i].load(); d.tie = tie[i].load(); d.speed = speed[i].load();
+        for (int k = 0; k < kSeqChordMax - 1; ++k) d.chord[k] = chordNote[i][k].load();
+        for (int l = 0; l < kArpLanes; ++l) d.lane[l] = lane[l][i].load();
+        return d;
+    }
+    void put (int i, const StepData& d)
+    {
+        step[i] = d.step; ratchet[i] = d.ratchet; seqNote[i] = d.note; tie[i] = d.tie; speed[i] = d.speed;
+        for (int k = 0; k < kSeqChordMax - 1; ++k) chordNote[i][k] = d.chord[k];
+        for (int l = 0; l < kArpLanes; ++l) lane[l][i] = d.lane[l];
+    }
+};
+
+// v7 : historique du motif (CTRL+Z annuler, CTRL+Y / CTRL+MAJ+Z refaire) : le motif entier + sa longueur, 64 etapes
+struct ArpSnapshot { ArpPattern::StepData st[kArpSteps]; int len = 8; };
+struct ArpHistory
+{
+    std::vector<ArpSnapshot> undo, redo;
+    uint32_t lastMs = 0; int lastKey = -1;
+    void push (const ArpSnapshot& s) { undo.push_back (s); if (undo.size() > 64) undo.erase (undo.begin()); redo.clear(); }
 };
 
 struct ArpParams

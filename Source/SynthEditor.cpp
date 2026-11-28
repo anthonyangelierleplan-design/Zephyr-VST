@@ -140,7 +140,7 @@ float stepX (float W, int k) { return (float) k * stepW (W) + (float) (k / 4) * 
 int stepAt (float W, float x) { for (int k = 15; k > 0; --k) if (x >= stepX (W, k) - ((k % 4) == 0 ? kGrpGap * 0.5f : 0.f)) return k; return 0; }
 }
 
-StepGrid::StepGrid (ZephyrAudioProcessor& p) : proc (p) { startTimerHz (20); }
+StepGrid::StepGrid (ZephyrAudioProcessor& p) : proc (p) { startTimerHz (20); setWantsKeyboardFocus (true); }
 
 void StepGrid::timerCallback()
 {
@@ -167,6 +167,7 @@ void StepGrid::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheel
     if (speedRow && (float) e.y > mainBottom())                                 // rangee STEP SPEED : la molette passe d'une vitesse a l'autre
     {
         const int k = stepAt ((float) getWidth(), (float) e.x);
+        pushUndo (200 + k);
         const int r = juce::jlimit (0, zephyr::kNumSpeeds - 1, speedRank (proc.arpPat.speed[k].load()) + (w.deltaY > 0 ? 1 : -1));
         proc.arpPat.speed[k] = kSpeedOrder[r];
         repaint();
@@ -175,6 +176,7 @@ void StepGrid::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheel
     if (paramInt (proc.apvts, "s_arpType") != 1 || (float) e.y > mainBottom()) return;
     const int k = stepAt ((float) getWidth(), (float) e.x);
     const int d = (w.deltaY > 0 ? 1 : -1) * (e.mods.isShiftDown() ? 12 : 1);
+    pushUndo (100 + k);
     proc.arpPat.transposeStep (k, d);                                              // v5 : un accord se transpose en bloc
     repaint();
 }
@@ -189,9 +191,15 @@ void StepGrid::paint (juce::Graphics& g)
     for (int k = 0; k < 16; ++k)
     {
         const float dim = k < len ? 1.f : 0.3f, x = stepX (W, k);
+        const bool sel = selA >= 0 && k >= juce::jmin (selA, selB) && k <= juce::jmax (selA, selB);
+        if (sel)
+        {   // v7 : pas selectionnes : pastille derriere le numero + trait sous la colonne
+            g.setColour (ledCol().withAlpha (0.35f)); g.fillRoundedRectangle (x + 1.f, 0.f, cw - 2.f, kNumH - 1.f, 3.f);
+            g.setColour (ledCol().brighter (0.4f)); g.fillRoundedRectangle (x + 3.f, (float) getHeight() - 2.f, cw - 6.f, 2.f, 1.f);
+        }
         // numero du pas : le premier de chaque groupe (1, 5, 9, 13) a la couleur des LED
         g.setFont (bold (12.f));
-        g.setColour (k == cur ? juce::Colours::white : (k % 4 == 0 ? ledCol().brighter (0.3f) : look::print).withAlpha ((k % 4 == 0 ? 0.95f : 0.6f) * dim));
+        g.setColour (k == cur || sel ? juce::Colours::white : (k % 4 == 0 ? ledCol().brighter (0.3f) : look::print).withAlpha ((k % 4 == 0 ? 0.95f : 0.6f) * dim));
         g.drawText (juce::String (k + 1), juce::Rectangle<float> (x, 0.f, cw, kNumH - 2.f).toNearestInt(), juce::Justification::centred, false);
         auto cell = juce::Rectangle<float> (x + 2.f, kNumH, cw - 4.f, mainB - kNumH - 2.f);
         const int st = proc.arpPat.step[k].load(), rt = proc.arpPat.ratchet[k].load();
@@ -275,11 +283,100 @@ void StepGrid::apply (const juce::MouseEvent& e, bool first)
     }
     repaint();
 }
-void StepGrid::mouseDown (const juce::MouseEvent& e) { apply (e, true); }
-void StepGrid::mouseDrag (const juce::MouseEvent& e) { apply (e, false); }
+void StepGrid::mouseDown (const juce::MouseEvent& e)
+{
+    grabKeyboardFocus();
+    const int k = stepAt ((float) getWidth(), (float) e.x);
+    if ((float) e.y < kNumH || (e.mods.isShiftDown() && (float) e.y <= mainBottom()))
+    {   // v7 : selection = clic (ou glisser) sur les numeros, ou MAJ + clic sur les cases ; reclic sur un pas seul selectionne = deselection
+        selecting = true;
+        if (e.mods.isShiftDown() && selA >= 0) selB = k;
+        else if (selA == k && selB == k) { selA = selB = -1; selecting = false; }
+        else selA = selB = k;
+        repaint();
+        return;
+    }
+    selecting = false;
+    pushUndo();
+    apply (e, true);
+}
+void StepGrid::mouseDrag (const juce::MouseEvent& e)
+{
+    if (selecting) { const int k = stepAt ((float) getWidth(), (float) e.x); if (k != selB) { selB = k; repaint(); } return; }
+    apply (e, false);
+}
+
+// ---- v7 : historique, duplication, raccourcis clavier
+void StepGrid::pushUndo (int coalesce)
+{
+    auto& h = proc.arpHistory;
+    const uint32_t now = juce::Time::getMillisecondCounter();
+    if (coalesce >= 0 && coalesce == h.lastKey && now - h.lastMs < 800) { h.lastMs = now; return; }    // molette : un seul pas d'annulation par geste
+    h.lastKey = coalesce; h.lastMs = now;
+    zephyr::ArpSnapshot sn;
+    for (int i = 0; i < zephyr::kArpSteps; ++i) sn.st[i] = proc.arpPat.get (i);
+    sn.len = paramInt (proc.apvts, "s_arpLen") + 1;
+    h.push (sn);
+}
+
+namespace
+{
+void setPatternLen (ZephyrAudioProcessor& p, int len)
+{
+    if (auto* prm = p.apvts.getParameter ("s_arpLen")) prm->setValueNotifyingHost (prm->convertTo0to1 ((float) (juce::jlimit (1, 16, len) - 1)));
+}
+}
+
+void StepGrid::undoRedo (bool redo)
+{
+    auto& h = proc.arpHistory;
+    auto& from = redo ? h.redo : h.undo;
+    auto& to   = redo ? h.undo : h.redo;
+    if (from.empty()) return;
+    zephyr::ArpSnapshot cur;
+    for (int i = 0; i < zephyr::kArpSteps; ++i) cur.st[i] = proc.arpPat.get (i);
+    cur.len = paramInt (proc.apvts, "s_arpLen") + 1;
+    to.push_back (cur);
+    const auto sn = from.back(); from.pop_back();
+    for (int i = 0; i < zephyr::kArpSteps; ++i) proc.arpPat.put (i, sn.st[i]);
+    setPatternLen (proc, sn.len);
+    h.lastKey = -1;
+    if (auto* u = getParentComponent()) if (auto* panel = u->getParentComponent()) panel->repaint();     // la grille et les pistes
+    repaint();
+}
+
+void StepGrid::duplicate()
+{   // selection : copiee juste apres elle (la selection passe sur la copie : CTRL+D encore = on continue) ; sans selection : tout le motif, longueur doublee
+    const int len = paramInt (proc.apvts, "s_arpLen") + 1;
+    int a = 0, b = len - 1;
+    if (selA >= 0) { a = juce::jmin (selA, selB); b = juce::jmax (selA, selB); }
+    const int n = b - a + 1;
+    if (b + 1 > 15) return;                                                     // plus de place apres
+    pushUndo();
+    zephyr::ArpPattern::StepData src[zephyr::kArpSteps];
+    for (int i = a; i <= b; ++i) src[i - a] = proc.arpPat.get (i);
+    const int end = juce::jmin (15, b + n);
+    for (int i = b + 1; i <= end; ++i) proc.arpPat.put (i, src[i - b - 1]);
+    if (end + 1 > len) setPatternLen (proc, end + 1);
+    if (selA >= 0) { selA = b + 1; selB = end; }
+    if (auto* u = getParentComponent()) if (auto* panel = u->getParentComponent()) panel->repaint();
+    repaint();
+}
+
+bool StepGrid::keyPressed (const juce::KeyPress& key)
+{
+    const auto m = key.getModifiers();
+    const auto c = juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) key.getKeyCode());
+    if (m.isCommandDown() && c == 'Z') { undoRedo (m.isShiftDown()); return true; }
+    if (m.isCommandDown() && c == 'Y') { undoRedo (true); return true; }
+    if (m.isCommandDown() && c == 'D') { duplicate(); return true; }
+    if (key == juce::KeyPress::escapeKey && selA >= 0) { selA = selB = -1; repaint(); return true; }
+    return false;
+}
 
 void StepGrid::randomize()
 {
+    pushUndo();
     juce::Random r;
     for (int k = 0; k < 16; ++k)
     {
@@ -289,9 +386,9 @@ void StepGrid::randomize()
     }
     repaint();
 }
-void StepGrid::clear() { for (int k = 0; k < 16; ++k) { proc.arpPat.step[k] = 1; proc.arpPat.ratchet[k] = 1; proc.arpPat.speed[k] = 0; } repaint(); }
+void StepGrid::clear() { pushUndo(); for (int k = 0; k < 16; ++k) { proc.arpPat.step[k] = 1; proc.arpPat.ratchet[k] = 1; proc.arpPat.speed[k] = 0; } repaint(); }
 
-LaneEditor::LaneEditor (ZephyrAudioProcessor& p, int l) : proc (p), lane (l) { startTimerHz (20); }
+LaneEditor::LaneEditor (ZephyrAudioProcessor& p, int l) : proc (p), lane (l) { startTimerHz (20); setWantsKeyboardFocus (true); }
 
 void LaneEditor::paint (juce::Graphics& g)
 {
@@ -611,19 +708,20 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
         }
         // ---- rang 2 : pas des notes
         {
-            auto* u = unit ("NOTE STEPS  (click : rest / note / accent  -  lower row : ratchet or step speed)");
+            auto* u = unit ("NOTE STEPS  (click : rest / note / accent  -  click numbers : select  -  ctrl+D : duplicate  -  ctrl+Z : undo)");
             auto* len = combo (*u, "s_arpLen");
             auto* grid = new StepGrid (proc); { std::unique_ptr<juce::Component> o (grid); u->addAndMakeVisible (*grid); owned.push_back (std::move (o)); }
+            stepGrid = grid;
             auto* rnd = button (*u, "RANDOM", [grid] { grid->randomize(); }); auto* clr = button (*u, "CLEAR", [grid] { grid->clear(); });
             auto* rec = toggle (*u, "s_seqRec", "REC");
             auto stepLen = [this] { return juce::jlimit (1, 16, juce::roundToInt (proc.apvts.getRawParameterValue ("s_arpLen")->load()) + 1); };
-            auto* rest = button (*u, "REST", [this, stepLen, grid] { proc.recGroupClose = true; const int p = juce::jlimit (0, 15, proc.arpPat.recPos.load()); proc.arpPat.step[p] = 0; proc.arpPat.recPos = (p + 1) % stepLen(); grid->repaint(); });
-            auto* tie = button (*u, "TIE", [this, stepLen, grid] { proc.recGroupClose = true; const int p = (proc.arpPat.recPos.load() + stepLen() - 1) % stepLen(); proc.arpPat.tie[p] = 1 - proc.arpPat.tie[p].load(); grid->repaint(); });
+            auto* rest = button (*u, "REST", [this, stepLen, grid] { grid->pushUndo(); proc.recGroupClose = true; const int p = juce::jlimit (0, 15, proc.arpPat.recPos.load()); proc.arpPat.step[p] = 0; proc.arpPat.recPos = (p + 1) % stepLen(); grid->repaint(); });
+            auto* tie = button (*u, "TIE", [this, stepLen, grid] { grid->pushUndo(); proc.recGroupClose = true; const int p = (proc.arpPat.recPos.load() + stepLen() - 1) % stepLen(); proc.arpPat.tie[p] = 1 - proc.arpPat.tie[p].load(); grid->repaint(); });
             auto* back = button (*u, "BACK", [this, stepLen, grid] { proc.recGroupClose = true; proc.arpPat.recPos = (proc.arpPat.recPos.load() + stepLen() - 1) % stepLen(); grid->repaint(); });
             auto* chd = toggle (*u, "s_seqChord", "CHORD");                // v5 : CHORD = les notes jouees ensemble vont dans le meme pas ; 1 NOTE = une note par pas
             chd->setTooltip ("CHORD : notes played together (within 60 ms) are stored in the same step, up to 6 notes. 1 NOTE : one note per step.");
             auto* all = button (*u, "ALL RATCHET", [this, grid]
-            {   // v5 : remplace le potard RATCHET global : tous les pas passent au ratchet suivant (x1 > x2 > x3 > x4 > x1)
+            { grid->pushUndo();   // v5 : remplace le potard RATCHET global : tous les pas passent au ratchet suivant (x1 > x2 > x3 > x4 > x1)
                 int mx = 1; for (int k = 0; k < 16; ++k) mx = juce::jmax (mx, proc.arpPat.ratchet[k].load());
                 const int nx = mx % 4 + 1;
                 for (int k = 0; k < 16; ++k) proc.arpPat.ratchet[k] = nx;
@@ -671,8 +769,9 @@ SynthPanel::SynthPanel (ZephyrAudioProcessor& p, int pg) : proc (p), page (pg)
                 l.dst = dstCombo (*u, (q + "Dst").toRawUTF8()); l.len = combo (*u, (q + "Len").toRawUTF8());
                 l.amt = knob (*u, (q + "Amt").toRawUTF8(), "AMOUNT", "-", "+"); l.glide = knob (*u, (q + "Glide").toRawUTF8(), "GLIDE");
                 l.ed = new LaneEditor (proc, i); { std::unique_ptr<juce::Component> o (l.ed); u->addAndMakeVisible (*l.ed); owned.push_back (std::move (o)); }
+                l.ed->grid = stepGrid;
                 auto* ed = l.ed;
-                l.rnd = button (*u, "RND", [ed] { ed->randomize(); }); l.clr = button (*u, "CLR", [ed] { ed->clear(); });
+                l.rnd = button (*u, "RND", [ed] { if (ed->grid != nullptr) ed->grid->pushUndo(); ed->randomize(); }); l.clr = button (*u, "CLR", [ed] { if (ed->grid != nullptr) ed->grid->pushUndo(); ed->clear(); });
                 l.tg = tag (*u, "LANE " + juce::String (i + 1), juce::Justification::centredLeft, 10.f);
                 lanes->push_back (l);
             }

@@ -98,7 +98,13 @@ public:
     void randomize();
     void clear();
     void setSpeedRow (bool s) { speedRow = s; repaint(); }       // rangee du bas : false = RATCHET, true = STEP SPEED (v4)
+    // v7 : selection (clic sur les numeros, ou MAJ + clic), CTRL+D = dupliquer, CTRL+Z = annuler, CTRL+Y / CTRL+MAJ+Z = refaire, ECHAP = deselectionner
+    bool keyPressed (const juce::KeyPress&) override;
+    void pushUndo (int coalesce = -1);                          // a appeler AVANT chaque modification du motif (coalesce >= 0 : molette, une seule etape par geste)
+    void duplicate();
+    void undoRedo (bool redo);
 private:
+    int selA = -1, selB = -1; bool selecting = false;
     float mainBottom() const { return 16.f + ((float) getHeight() - 16.f) * 0.64f; }   // v7 : ligne des numeros (16 px) puis cases des notes, puis rangee du bas
     void timerCallback() override;
     void apply (const juce::MouseEvent&, bool first);
@@ -115,10 +121,12 @@ public:
     LaneEditor (ZephyrAudioProcessor&, int lane);
     ~LaneEditor() override { stopTimer(); }
     void paint (juce::Graphics&) override;
-    void mouseDown (const juce::MouseEvent& e) override { apply (e); }
+    void mouseDown (const juce::MouseEvent& e) override { grabKeyboardFocus(); if (grid != nullptr) grid->pushUndo(); apply (e); }
     void mouseDrag (const juce::MouseEvent& e) override { apply (e); }
+    bool keyPressed (const juce::KeyPress& k) override { return grid != nullptr && grid->keyPressed (k); }   // v7 : CTRL+Z / CTRL+D aussi depuis les pistes
     void randomize();
     void clear();
+    StepGrid* grid = nullptr;
 private:
     void timerCallback() override { const int c = proc.arpStepShown.load(); if (c != shown) { shown = c; repaint(); } }
     void apply (const juce::MouseEvent&);
@@ -147,6 +155,7 @@ private:
     std::vector<std::unique_ptr<ModuleUnit>> units;
     std::vector<std::unique_ptr<KnobUnit>> knobs;
     std::vector<std::unique_ptr<juce::Component>> owned;
+    StepGrid* stepGrid = nullptr;                               // v7 : les pistes passent leurs CTRL+Z / CTRL+D a la grille
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> comboAtt;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> sliderAtt;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>> buttonAtt;

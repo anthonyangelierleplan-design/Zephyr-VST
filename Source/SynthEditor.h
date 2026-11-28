@@ -99,6 +99,7 @@ public:
     void clear();
     void setSpeedRow (bool s) { speedRow = s; repaint(); }       // rangee du bas : false = RATCHET, true = STEP SPEED (v4)
 private:
+    float mainBottom() const { return 16.f + ((float) getHeight() - 16.f) * 0.64f; }   // v7 : ligne des numeros (16 px) puis cases des notes, puis rangee du bas
     void timerCallback() override;
     void apply (const juce::MouseEvent&, bool first);
     bool speedRow = false;

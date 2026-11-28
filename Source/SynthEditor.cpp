@@ -133,6 +133,11 @@ void drawWell (juce::Graphics& g, juce::Rectangle<float> r)
     g.setColour (juce::Colour (look::T().screenBg)); g.fillRoundedRectangle (r, 3.f);
     g.setColour (juce::Colour (look::T().accent).withAlpha (0.55f)); g.drawRoundedRectangle (r.reduced (0.5f), 3.f, 1.f);
 }
+// v7 : 16 pas en 4 groupes de 4 (un ecart entre les groupes, comme les temps d'une mesure) ; meme geometrie pour la grille et les pistes
+constexpr float kGrpGap = 7.f, kNumH = 16.f;                                    // ecart entre groupes ; hauteur de la ligne des numeros de pas
+float stepW (float W) { return (W - 3.f * kGrpGap) / 16.f; }
+float stepX (float W, int k) { return (float) k * stepW (W) + (float) (k / 4) * kGrpGap; }
+int stepAt (float W, float x) { for (int k = 15; k > 0; --k) if (x >= stepX (W, k) - ((k % 4) == 0 ? kGrpGap * 0.5f : 0.f)) return k; return 0; }
 }
 
 StepGrid::StepGrid (ZephyrAudioProcessor& p) : proc (p) { startTimerHz (20); }
@@ -159,44 +164,46 @@ static juce::String speedText (int code) { return juce::String::fromUTF8 (code =
 
 void StepGrid::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
 {
-    if (speedRow && (float) e.y > (float) getHeight() * 0.64f)                  // rangee STEP SPEED : la molette passe d'une vitesse a l'autre
+    if (speedRow && (float) e.y > mainBottom())                                 // rangee STEP SPEED : la molette passe d'une vitesse a l'autre
     {
-        const int k = juce::jlimit (0, 15, (int) ((float) e.x / ((float) getWidth() / 16.f)));
+        const int k = stepAt ((float) getWidth(), (float) e.x);
         const int r = juce::jlimit (0, zephyr::kNumSpeeds - 1, speedRank (proc.arpPat.speed[k].load()) + (w.deltaY > 0 ? 1 : -1));
         proc.arpPat.speed[k] = kSpeedOrder[r];
         repaint();
         return;
     }
-    if (paramInt (proc.apvts, "s_arpType") != 1 || (float) e.y > (float) getHeight() * 0.64f) return;
-    const int k = juce::jlimit (0, 15, (int) ((float) e.x / ((float) getWidth() / 16.f)));
+    if (paramInt (proc.apvts, "s_arpType") != 1 || (float) e.y > mainBottom()) return;
+    const int k = stepAt ((float) getWidth(), (float) e.x);
     const int d = (w.deltaY > 0 ? 1 : -1) * (e.mods.isShiftDown() ? 12 : 1);
     proc.arpPat.transposeStep (k, d);                                              // v5 : un accord se transpose en bloc
     repaint();
 }
 
 void StepGrid::paint (juce::Graphics& g)
-{
-    const float cw = (float) getWidth() / 16.f, mainH = (float) getHeight() * 0.64f;
+{   // v7 : numeros lisibles au-dessus des cases, groupes de 4 pas, accent = case plus lumineuse (plus de barre blanche), tete de lecture = cadre blanc
+    const float W = (float) getWidth(), cw = stepW (W), mainB = mainBottom();
     const int len = paramInt (proc.apvts, "s_arpLen") + 1;
     const int cur = shown >= 0 ? shown % len : -1;
     const bool seqType = paramInt (proc.apvts, "s_arpType") == 1, recOn = seqType && paramInt (proc.apvts, "s_seqRec") != 0;
     const int recAt = proc.arpPat.recPos.load();
     for (int k = 0; k < 16; ++k)
     {
-        const float dim = k < len ? 1.f : 0.3f;
-        auto cell = juce::Rectangle<float> ((float) k * cw + 2.f, 2.f, cw - 4.f, mainH - 4.f);
+        const float dim = k < len ? 1.f : 0.3f, x = stepX (W, k);
+        // numero du pas : le premier de chaque groupe (1, 5, 9, 13) a la couleur des LED
+        g.setFont (bold (12.f));
+        g.setColour (k == cur ? juce::Colours::white : (k % 4 == 0 ? ledCol().brighter (0.3f) : look::print).withAlpha ((k % 4 == 0 ? 0.95f : 0.6f) * dim));
+        g.drawText (juce::String (k + 1), juce::Rectangle<float> (x, 0.f, cw, kNumH - 2.f).toNearestInt(), juce::Justification::centred, false);
+        auto cell = juce::Rectangle<float> (x + 2.f, kNumH, cw - 4.f, mainB - kNumH - 2.f);
         const int st = proc.arpPat.step[k].load(), rt = proc.arpPat.ratchet[k].load();
         drawWell (g, cell);
         if (st > 0)
         {
             auto lit = cell.reduced (3.f);
-            g.setGradientFill (juce::ColourGradient (ledCol().brighter (st == 2 ? 0.5f : 0.f).withAlpha (dim), lit.getX(), lit.getY(),
-                                                     ledCol().darker (st == 2 ? 0.1f : 0.6f).withAlpha (dim), lit.getX(), lit.getBottom(), false));
+            if (st == 2) { g.setColour (ledCol().withAlpha (0.3f * dim)); g.fillRoundedRectangle (cell.expanded (2.f), 4.f); }     // accent : halo + case vive
+            g.setGradientFill (juce::ColourGradient (st == 2 ? ledCol().brighter (0.55f).withAlpha (dim) : ledCol().darker (0.3f).withAlpha (dim), lit.getX(), lit.getY(),
+                                                     st == 2 ? ledCol().brighter (0.1f).withAlpha (dim) : ledCol().darker (0.8f).withAlpha (dim), lit.getX(), lit.getBottom(), false));
             g.fillRoundedRectangle (lit, 2.f);
-            if (st == 2) { g.setColour (ledCol().withAlpha (0.25f * dim)); g.fillRoundedRectangle (cell.expanded (2.f), 4.f); g.setColour (juce::Colours::white.withAlpha (0.5f * dim)); g.fillRect (lit.getCentreX() - 1.5f, lit.getY() + 4.f, 3.f, lit.getHeight() - 8.f); }
         }
-        g.setColour (look::print.withAlpha (0.55f * dim)); g.setFont (bold (9.f));
-        g.drawText (juce::String (k + 1), cell.toNearestInt().withTrimmedTop (juce::roundToInt (cell.getHeight()) - 12), juce::Justification::centred, false);
         if (seqType && st > 0)
         {
             int nt[zephyr::kSeqChordMax]; const int nn = proc.arpPat.stepNotes (k, nt);
@@ -206,51 +213,51 @@ void StepGrid::paint (juce::Graphics& g)
                 int lo = nt[0]; for (int q = 1; q < nn; ++q) lo = juce::jmin (lo, nt[q]);
                 auto nm = juce::String::fromUTF8 (foudre::accords::nomAccord (nt, nn).c_str());
                 if (nm.isEmpty()) nm = noteName (lo) + "+" + juce::String (nn - 1);
-                auto tr = cell.toNearestInt().withTrimmedBottom (12).reduced (2, 0);
-                g.setFont (bold (12.f)); g.drawFittedText (nm, tr.withTrimmedBottom (tr.getHeight() / 3), juce::Justification::centred, 1, 0.6f);
-                g.setFont (bold (8.5f)); g.setColour (juce::Colours::black.withAlpha (0.6f * dim));
+                auto tr = cell.toNearestInt().reduced (2, 2);
+                g.setFont (bold (13.f)); g.drawFittedText (nm, tr.withTrimmedBottom (tr.getHeight() / 3), juce::Justification::centred, 1, 0.6f);
+                g.setFont (bold (10.f)); g.setColour (juce::Colours::black.withAlpha (0.65f * dim));
                 g.drawText (juce::String::fromUTF8 (foudre::accords::nomNote (lo)) + juce::String (lo / 12 - 2), tr.withTrimmedTop (tr.getHeight() * 2 / 3), juce::Justification::centred, false);   // basse, en bemols comme le nom de l'accord
             }
             else
             {
-                g.setFont (bold (13.f));
-                g.drawText (noteName (nt[0]), cell.toNearestInt().withTrimmedBottom (10), juce::Justification::centred, false);
+                g.setFont (bold (14.f));
+                g.drawText (noteName (nt[0]), cell.toNearestInt(), juce::Justification::centred, false);
             }
             if (proc.arpPat.tie[k].load() != 0) { g.setColour (juce::Colours::black.withAlpha (0.8f * dim)); g.fillRoundedRectangle (cell.getRight() - 9.f, cell.getCentreY() - 3.f, 12.f, 6.f, 2.f); }
         }
         const int spd = proc.arpPat.speed[k].load();
-        if (spd != 0 && ! speedRow)                                                 // pas a vitesse propre : petit badge en haut de la case (visible aussi en vue RATCHET)
+        if (spd != 0 && ! speedRow)                                                 // pas a vitesse propre : badge en haut de la case (visible aussi en vue RATCHET)
         {
-            auto bd = juce::Rectangle<float> (cell.getRight() - 25.f, cell.getY() + 3.f, 22.f, 11.f);
-            g.setColour (juce::Colours::black.withAlpha (0.7f * dim)); g.fillRoundedRectangle (bd, 3.f);
-            g.setColour (ledCol().brighter (0.4f).withAlpha (dim)); g.setFont (bold (8.5f));
+            auto bd = juce::Rectangle<float> (cell.getRight() - 31.f, cell.getY() + 3.f, 28.f, 14.f);
+            g.setColour (juce::Colours::black.withAlpha (0.75f * dim)); g.fillRoundedRectangle (bd, 3.f);
+            g.setColour (ledCol().brighter (0.4f).withAlpha (dim)); g.setFont (bold (10.5f));
             g.drawText (speedText (spd), bd.toNearestInt(), juce::Justification::centred, false);
         }
-        auto rc = juce::Rectangle<float> ((float) k * cw + 2.f, mainH + 2.f, cw - 4.f, (float) getHeight() - mainH - 4.f);
+        auto rc = juce::Rectangle<float> (x + 2.f, mainB + 2.f, cw - 4.f, (float) getHeight() - mainB - 4.f);
         drawWell (g, rc);
-        if (speedRow)                                                               // vitesse du pas : x1/2, x1, x3/2, x2, x4
+        if (speedRow)                                                               // vitesse du pas : x1/2, x1, x3/2, x2, x4 (x1 discret, les autres allumes)
         {
-            g.setColour (spd != 0 ? ledCol().brighter (0.3f).withAlpha (dim) : look::print.withAlpha (0.28f * dim));
-            g.setFont (bold (spd != 0 ? 12.f : 10.f));
+            g.setColour (spd != 0 ? ledCol().brighter (0.3f).withAlpha (dim) : look::print.withAlpha (0.4f * dim));
+            g.setFont (bold (spd != 0 ? 15.f : 12.f));
             g.drawText (speedText (spd), rc.toNearestInt(), juce::Justification::centred, false);
         }
-        else                                                                        // ratchet : 1 a 4 petits points
+        else                                                                        // ratchet : 1 a 4 points
             for (int d = 0; d < 4; ++d)
             {
                 const float px = rc.getX() + rc.getWidth() * (0.2f + 0.2f * (float) d), py = rc.getCentreY();
                 g.setColour (d < rt && st > 0 ? ledCol().withAlpha (dim) : look::print.withAlpha (0.12f * dim));
-                g.fillEllipse (px - 3.f, py - 3.f, 6.f, 6.f);
+                g.fillEllipse (px - 3.5f, py - 3.5f, 7.f, 7.f);
             }
-        if (k == cur) { g.setColour (juce::Colours::white.withAlpha (0.85f)); g.drawRoundedRectangle (juce::Rectangle<float> ((float) k * cw + 1.f, 1.f, cw - 2.f, (float) getHeight() - 2.f), 3.f, 1.6f); }
-        if (recOn && k == recAt) { g.setColour (juce::Colour (0xffff4a3a)); g.drawRoundedRectangle (juce::Rectangle<float> ((float) k * cw + 1.f, 1.f, cw - 2.f, (float) getHeight() - 2.f), 3.f, 2.4f); }
+        const auto col = juce::Rectangle<float> (x + 1.f, kNumH - 1.f, cw - 2.f, (float) getHeight() - kNumH);
+        if (k == cur) { g.setColour (juce::Colours::white.withAlpha (0.9f)); g.drawRoundedRectangle (col, 3.f, 2.f); }
+        if (recOn && k == recAt) { g.setColour (juce::Colour (0xffff4a3a)); g.drawRoundedRectangle (col, 3.f, 2.4f); }
     }
 }
 
 void StepGrid::apply (const juce::MouseEvent& e, bool first)
 {
-    const float cw = (float) getWidth() / 16.f, mainH = (float) getHeight() * 0.64f;
-    const int k = juce::jlimit (0, 15, (int) ((float) e.x / cw));
-    if (first) ratchetRow = (float) e.y > mainH;
+    const int k = stepAt ((float) getWidth(), (float) e.x);
+    if (first) ratchetRow = (float) e.y > mainBottom();
     if (ratchetRow && speedRow)                                                     // clic : vitesse suivante (x1 > x2 > x4 > x1/2 > x3/2), clic droit : x1 ; glisser = meme vitesse sur les pas voisins
     {
         if (first) { const int sp = proc.arpPat.speed[k].load(); paintState = e.mods.isPopupMenu() ? 0 : (sp + 1) % zephyr::kNumSpeeds; }
@@ -288,13 +295,13 @@ LaneEditor::LaneEditor (ZephyrAudioProcessor& p, int l) : proc (p), lane (l) { s
 
 void LaneEditor::paint (juce::Graphics& g)
 {
-    const float cw = (float) getWidth() / 16.f, H = (float) getHeight();
+    const float W = (float) getWidth(), cw = stepW (W), H = (float) getHeight();
     const int len = paramInt (proc.apvts, "s_lane" + juce::String (lane + 1) + "Len") + 1;
     const int cur = shown >= 0 ? shown % len : -1;
     for (int k = 0; k < 16; ++k)
     {
         const float dim = k < len ? 1.f : 0.3f, v = proc.arpPat.lane[lane][k].load();
-        auto cell = juce::Rectangle<float> ((float) k * cw + 2.f, 2.f, cw - 4.f, H - 4.f);
+        auto cell = juce::Rectangle<float> (stepX (W, k) + 2.f, 2.f, cw - 4.f, H - 4.f);
         drawWell (g, cell);
         g.setColour (look::print.withAlpha (0.06f * dim));
         for (int q = 1; q < 4; ++q) g.fillRect (cell.getX() + 2.f, cell.getY() + cell.getHeight() * (float) q / 4.f, cell.getWidth() - 4.f, 1.f);
@@ -305,14 +312,13 @@ void LaneEditor::paint (juce::Graphics& g)
             g.fillRoundedRectangle (bar, 2.f);
             g.setColour (juce::Colours::white.withAlpha (0.55f * dim)); g.fillRect (bar.getX(), bar.getY(), bar.getWidth(), 1.5f);
         }
-        if (k == cur) { g.setColour (juce::Colours::white.withAlpha (0.85f)); g.drawRoundedRectangle (juce::Rectangle<float> ((float) k * cw + 1.f, 1.f, cw - 2.f, H - 2.f), 3.f, 1.6f); }
+        if (k == cur) { g.setColour (juce::Colours::white.withAlpha (0.9f)); g.drawRoundedRectangle (juce::Rectangle<float> (stepX (W, k) + 1.f, 1.f, cw - 2.f, H - 2.f), 3.f, 2.f); }
     }
 }
 
 void LaneEditor::apply (const juce::MouseEvent& e)
 {
-    const float cw = (float) getWidth() / 16.f;
-    const int k = juce::jlimit (0, 15, (int) ((float) e.x / cw));
+    const int k = stepAt ((float) getWidth(), (float) e.x);
     float v = 1.f - (float) (e.y - 5) / (float) (getHeight() - 10);
     v = juce::jlimit (0.f, 1.f, v);
     if (v < 0.04f) v = 0.f;

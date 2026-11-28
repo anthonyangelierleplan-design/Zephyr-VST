@@ -7,7 +7,7 @@
 class LfoView : public juce::Component, private juce::Timer
 {
 public:
-    // v7 : anime : un point parcourt la forme d'onde a la vraie vitesse du LFO (60 images/s, seulement quand l'ecran est visible)
+    // v7 : anime : l'onde defile comme sur un oscilloscope, a la vraie vitesse du LFO (60 images/s, seulement quand l'ecran est visible)
     LfoView (juce::AudioProcessorValueTreeState& a, const juce::String& waveId, const juce::String& slewId, const zephyr::Synth* s = nullptr, int index = 0)
         : apvts (a), wave (waveId), slew (slewId), synth (s), idx (index) { if (synth != nullptr) startTimerHz (60); }
     ~LfoView() override { stopTimer(); }
@@ -19,7 +19,6 @@ private:
     juce::AudioProcessorValueTreeState& apvts;
     juce::String wave, slew;
     const zephyr::Synth* synth; int idx;
-    float trail[10] {}; int trailN = 0;                       // positions precedentes (trainee qui s'efface)
 };
 
 

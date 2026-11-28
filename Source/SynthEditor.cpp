@@ -87,7 +87,7 @@ float LfoView::shapeAt (float ph, int w, float sl) const
 }
 
 void LfoView::paint (juce::Graphics& g)
-{
+{   // v7 : l'onde defile comme sur un oscilloscope : le bord droit = maintenant, elle glisse vers la gauche a la vitesse du LFO
     const auto b = getLocalBounds().toFloat();
     g.setColour (juce::Colour (0xff050506));
     g.fillRect (b);
@@ -97,35 +97,26 @@ void LfoView::paint (juce::Graphics& g)
     const int w = juce::roundToInt (value (wave));
     const float sl = value (slew);
     auto yOf = [&] (float v) { return b.getCentreY() - v * (b.getHeight() * 0.38f); };
+    const bool live = synth != nullptr && synth->shownLive[idx].load (std::memory_order_relaxed);
+    const float now = live ? synth->shownPh[idx].load (std::memory_order_relaxed) : 1.f;      // RETRIG sans note : onde immobile
+    auto phAt = [&] (float x01) { float ph = now - 1.f + x01; ph -= std::floor (ph); return juce::jlimit (0.f, 0.9999f, ph); };
     juce::Path p;
     const int n = (int) b.getWidth();
     for (int i = 0; i <= n; ++i)
     {
-        const float ph = (float) i / (float) n * 0.9999f;
-        const float px = b.getX() + (float) i, py = yOf (shapeAt (ph, w, sl));
+        const float px = b.getX() + (float) i, py = yOf (shapeAt (phAt ((float) i / (float) n), w, sl));
         if (i == 0) p.startNewSubPath (px, py); else p.lineTo (px, py);
     }
     g.setColour (juce::Colour (0xffff7a1a).withAlpha (0.3f));
     g.strokePath (p, juce::PathStrokeType (4.f));
     g.setColour (juce::Colour (0xffffb05a));
     g.strokePath (p, juce::PathStrokeType (1.6f));
-    if (synth != nullptr && synth->shownLive[idx].load (std::memory_order_relaxed))
-    {   // v7 : position du LFO : trainee + point lumineux + trait vertical discret
-        const float ph = juce::jlimit (0.f, 0.9999f, synth->shownPh[idx].load (std::memory_order_relaxed));
-        for (int k = juce::jmin (trailN, 9); k > 0; --k) trail[k] = trail[k - 1];
-        trail[0] = ph; trailN = juce::jmin (trailN + 1, 10);
-        for (int k = trailN - 1; k >= 1; --k)
-        {
-            const float tp = trail[k], a = 0.35f * (1.f - (float) k / 10.f);
-            g.setColour (juce::Colour (0xffffd29a).withAlpha (a));
-            g.fillEllipse (b.getX() + tp * b.getWidth() - 2.5f, yOf (shapeAt (tp, w, sl)) - 2.5f, 5.f, 5.f);
-        }
-        const float x = b.getX() + ph * b.getWidth(), y = yOf (shapeAt (ph, w, sl));
-        g.setColour (juce::Colour (0xffffb05a).withAlpha (0.25f)); g.drawVerticalLine ((int) x, b.getY() + 2.f, b.getBottom() - 2.f);
-        g.setColour (juce::Colour (0xffff7a1a).withAlpha (0.45f)); g.fillEllipse (x - 7.f, y - 7.f, 14.f, 14.f);
-        g.setColour (juce::Colours::white); g.fillEllipse (x - 3.5f, y - 3.5f, 7.f, 7.f);
+    if (live)
+    {   // valeur actuelle au bord droit
+        const float y = yOf (shapeAt (phAt (1.f), w, sl)), x = b.getRight() - 3.f;
+        g.setColour (juce::Colour (0xffff7a1a).withAlpha (0.45f)); g.fillEllipse (x - 6.f, y - 6.f, 12.f, 12.f);
+        g.setColour (juce::Colours::white); g.fillEllipse (x - 3.f, y - 3.f, 6.f, 6.f);
     }
-    else trailN = 0;
     g.setColour (juce::Colour (0xffe9e5d8).withAlpha (0.6f));
     g.drawRect (b, 1.2f);
 }

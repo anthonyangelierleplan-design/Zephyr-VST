@@ -677,7 +677,7 @@ const Factory kFactory[] = {
     { "Aurora Borealis", "Pad", pAurora }, { "Glass Cathedral", "Pad", pGlassCathedral }, { "Silver Lining", "Pad", pSilverLining }, { "Velvet Horizon", "Pad", pVelvetHorizon },
     { "Morning Dew", "Pad", pMorningDew }, { "Lumiere", "Pad", pLumiere }, { "Polaris Chords", "Pad", pPolaris },
     { "Solina Dreams", "Strings", sSolina }, { "Velvet Orchestra", "Strings", sVelvetOrch }, { "Cello Light", "Strings", sCelloLight }, { "Ensemble Royal", "Strings", sEnsembleRoyal }, { "Silk Strings", "Strings", sSilk },
-    { "Tine Piano", "Keys / Bells", kTinePiano }, { "Wurli Gold", "Keys / Bells", kWurliGold }, { "Electric Grand", "Keys / Bells", kElectricGrand },
+    { "Tine Piano", "Organ", kTinePiano }, { "Wurli Gold", "Organ", kWurliGold }, { "Electric Grand", "Keys / Bells", kElectricGrand },
     { "Silk Organ", "Keys / Bells", kSilkOrgan }, { "Vibraphone Dream", "Keys / Bells", kVibraphone }, { "Crystal Bell", "Keys / Bells", kCrystalBell }, { "Poly-Mod Bell", "Keys / Bells", kPolyModBell },
     { "Golden Brass", "Brass / Lead", lGoldenBrass }, { "Prophecy Sync", "Brass / Lead", lProphecySync }, { "Silver Flute", "Brass / Lead", lSilverFlute }, { "Lumen Lead", "Brass / Lead", lLumenLead }, { "Velvet Horn", "Brass / Lead", lVelvetHorn },
     { "Satin Bass", "Bass", bSatin }, { "Moon Ladder", "Bass", bMoon }, { "Deep Prophet", "Bass", bDeepProphet }, { "Round Sub", "Bass", bRoundSub },

@@ -2,6 +2,11 @@
 
 Le plus récent en haut (v2 et suivantes ; la v1 n'est pas documentée). L'état actuel du plugin est décrit dans le README.
 
+## v7 (volume des presets Arp / Seq)
+- **Presets Arp / Seq remontés à -27 LUFS** : ils sortaient de -35 à -44 LUFS, soit ~20 dB sous les nappes (les autres catégories : -20 à -34, médiane -24). Leurs notes sont courtes et pincées, et leur volume avait été calé comme celui d'un son tenu. Corrections : Starlight Arp +16,8 dB, Crystal Cascade +15, Prism Sequence +17,1, Monopoly Lights +12,6, Chord Pulse 82 +13,2, Half-Speed Memory +15, Pine Forest Signal +17,2, Film Society +8,3. Le son ne change pas (spectre identique au banc), seul le volume monte ; crêtes entre -8 et -17 dBFS, aucun écrêtage.
+- Starlight Arp plafonne à -28,6 LUFS : son potard OUTPUT est au maximum (+12 dB).
+- Mesure au banc : accord do-sol-do, vélocité 100, 4 s, tempo 120. Les anciens projets ne changent pas (leur volume est sauvé dans le projet).
+
 ## v6 (module TAPE, calé sur un Philips D6410)
 - **Module TAPE** à la place de CASSETTE / VHS (même emplacement du rack, pas de module en plus) : un magnétophone à cassette calé sur un Philips D6410 mesuré au banc (fichier témoin enregistré sur cassette type I puis réenregistré). Code commun avec Orage dans Foudre-Core (`FoudreTape.h`).
   - DRIVE : saturation de bande suréchantillonnée ×4 (harmonique 3 surtout) ; 50 % = passe propre du Philips (H3 -24 dB, 6 à 9 % de distorsion), 100 % = passe saturée (12 à 17 %).

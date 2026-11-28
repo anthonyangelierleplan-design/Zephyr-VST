@@ -38,10 +38,12 @@ Identité à garder : sons riches, luxuriants, vintage mais lumineux et subtils 
 - **Thunder-VST** : claviers vintage créatifs (orgue à roues, Rhodes, Wurlitzer, Vox, Clavinet), moteur de synthèse (pas de samples).
 - Orage et Zephyr ont divergé : une fonction commune se reporte **à la main**, en gardant l'identité de chacun (ex. Orage v23 → Zephyr v4). Projet décidé : un dépôt commun **Foudre-Core** (ergonomie, thèmes, arpégiateur / séquenceur, modules identiques comme la cassette) ; les modules qui font la couleur de chaque synthé restent dans leur dépôt.
 
-## Où on en est (26 nov. 2026)
-- En test (27 nov. 2026) : **v5** sur sa branche (Chord Seq, Arp/Seq rangé, filtres au même volume), pas encore fusionnée.
-  Code partagé : `FoudreAccords.h` de **Foudre-Core** (FetchContent, figé sur un commit dans `CMakeLists.txt`). Captures de l'interface : `foudre-banc capture <vst3> --onglet 1` (le plugin lit `FOUDRE_ONGLET`).
-- Dernière version : **v4** (module CASSETTE / VHS, arpège CHORD, vitesse par pas, 9 presets cassette, profil Osmose CE, THRU), fusionnée sur `main`. Dépôt nettoyé (README / CHANGELOG / tests automatiques).
+## Où on en est (28 nov. 2026)
+- En test : **v7** sur la branche `v7-arp-niveau` (presets Arp / Seq remontés à -27 LUFS), pas encore fusionnée.
+- Dernière version fusionnée sur `main` (27 nov. 2026) : **v6** (module TAPE calé sur un Philips D6410, 6 presets façon Boards of Canada), qui inclut la **v5** (Chord Seq, Arp/Seq rangé, filtres au même volume).
+  Code partagé : `FoudreAccords.h` et `FoudreTape.h` de **Foudre-Core** (FetchContent, figé sur un commit dans `CMakeLists.txt`). Banc d'essai : `C:\Dev\Foudre-Core\build\banc\FoudreBanc_artefacts\Release\foudre-banc.exe` ; captures de l'interface : `foudre-banc capture <vst3> --onglet 1` (le plugin lit `FOUDRE_ONGLET`).
+- Piège du banc : `--programme N` = index dans `kFactory`, et l'index 0 est **Init** (Aurora Borealis = 1). Arp / Seq = 29 à 32, 43, 44, 48, 50.
+- CMake n'est pas dans le PATH : `C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe`. Pas de g++ local : `tools/tests/run.sh` tourne sur GitHub.
 - Ses goûts : adore les 11 modules et l'arpégiateur / séquenceur ; joue en thème MINUIT.
 - La grille de stabilité signale 28 réglages, tous PROPHET à résonance ≥ 80 % : auto-oscillation voulue depuis le calage Prophet-6 (voir README), pas un bug.
 - Idées discutées, pas commencées (lui demander par quoi commencer) :

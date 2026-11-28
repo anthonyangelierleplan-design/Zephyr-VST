@@ -1666,6 +1666,14 @@ void ZephyrAudioProcessor::loadFactoryPreset (int i)
         if (const auto it = flvTrimDb.find (kFactory[i].name); it != flvTrimDb.end())
             if (auto* o = apvts.getRawParameterValue ("output")) setParamReal ("output", o->load() + it->second);
     }
+    {   // v7 : presets Arp / Seq recales a -27 LUFS (avant : -35 a -44, ~20 dB sous les nappes). Notes courtes et pincees : leur volume avait ete
+        // cale comme celui d'un son tenu. Mesure au banc : accord do-sol-do, velocite 100, 4 s, tempo 120 (les autres categories : -20 a -34, mediane -24)
+        static const std::map<juce::String, float> arpTrimDb {
+            { "Starlight Arp", 16.8f }, { "Crystal Cascade", 15.f }, { "Prism Sequence", 17.1f }, { "Monopoly Lights", 12.6f },
+            { "Chord Pulse 82", 13.2f }, { "Half-Speed Memory", 15.f }, { "Pine Forest Signal", 17.2f }, { "Film Society", 8.3f } };
+        if (const auto it = arpTrimDb.find (kFactory[i].name); it != arpTrimDb.end())
+            if (auto* o = apvts.getRawParameterValue ("output")) setParamReal ("output", o->load() + it->second);
+    }
     if (i != 0) { applyMacroSet (*this, kFactory[i].category); pruneRack(); }
     normalizeArp ([this] (const char* id, float d) { auto* v = apvts.getRawParameterValue (id); return v != nullptr ? v->load() : d; },
                   [this] (const char* id, float v) { setParamReal (id, v); }, arpPat);
